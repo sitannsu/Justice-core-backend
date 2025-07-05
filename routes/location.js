@@ -151,4 +151,49 @@ router.get('/user/:userId/latest', async (req, res) => {
   }
 });
 
+// Get latest 10 updated locations for a user
+router.get('/user/:userId/recent', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { limit = 10 } = req.query;
+    
+    const locations = await Location.find({ userId })
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .select('lat lng timestamp userId createdAt updatedAt');
+    
+    if (!locations || locations.length === 0) {
+      return res.status(404).json({ 
+        message: 'No locations found for this user',
+        locations: [],
+        count: 0
+      });
+    }
+    
+    // Format the response with additional details
+    const formattedLocations = locations.map(location => ({
+      id: location._id,
+      lat: location.lat,
+      lng: location.lng,
+      coordinates: `${location.lat}, ${location.lng}`,
+      timestamp: location.timestamp,
+      userId: location.userId,
+      createdAt: location.createdAt,
+      updatedAt: location.updatedAt,
+      timeAgo: getTimeAgo(location.timestamp),
+      dateFormatted: formatDate(location.timestamp)
+    }));
+    
+    res.json({
+      locations: formattedLocations,
+      count: formattedLocations.length,
+      userId: userId,
+      requestedLimit: parseInt(limit),
+      summary: `Latest ${formattedLocations.length} locations for user ${userId}`
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router; 
