@@ -196,4 +196,102 @@ router.get('/user/:userId/recent', async (req, res) => {
   }
 });
 
+// Get locations by interval (e.g., every 15 minutes, 1 hour, etc.)
+router.get('/user/:userId/interval', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const { interval = 15, unit = 'minutes', limit = 50 } = req.query;
+    
+    // Validate interval
+    const intervalValue = parseInt(interval);
+    if (intervalValue <= 0) {
+      return res.status(400).json({ 
+        message: 'Interval must be a positive number' 
+      });
+    }
+    
+    // Calculate interval in milliseconds
+    let intervalMs;
+    switch (unit.toLowerCase()) {
+      case 'seconds':
+        intervalMs = intervalValue * 1000;
+        break;
+      case 'minutes':
+        intervalMs = intervalValue * 60 * 1000;
+        break;
+      case 'hours':
+        intervalMs = intervalValue * 60 * 60 * 1000;
+        break;
+      case 'days':
+        intervalMs = intervalValue * 24 * 60 * 60 * 1000;
+        break;
+      default:
+        return res.status(400).json({ 
+          message: 'Unit must be seconds, minutes, hours, or days' 
+        });
+    }
+    
+    // Get all locations for the user, sorted by timestamp
+    const allLocations = await Location.find({ userId })
+      .sort({ timestamp: 1 }) // Oldest first for processing
+      .select('lat lng timestamp userId createdAt updatedAt');
+    
+    if (!allLocations || allLocations.length === 0) {
+      return res.status(404).json({ 
+        message: 'No locations found for this user',
+        locations: [],
+        count: 0,
+        interval: intervalValue,
+        unit: unit
+      });
+    }
+    
+    // Filter locations based on interval
+    const filteredLocations = [];
+    let lastSelectedTime = null;
+    
+    for (const location of allLocations) {
+      const locationTime = new Date(location.timestamp).getTime();
+      
+      if (!lastSelectedTime || (locationTime - lastSelectedTime) >= intervalMs) {
+        filteredLocations.push(location);
+        lastSelectedTime = locationTime;
+        
+        // Limit the number of results
+        if (filteredLocations.length >= parseInt(limit)) {
+          break;
+        }
+      }
+    }
+    
+    // Format the response
+    const formattedLocations = filteredLocations.map(location => ({
+      id: location._id,
+      lat: location.lat,
+      lng: location.lng,
+      coordinates: `${location.lat}, ${location.lng}`,
+      timestamp: location.timestamp,
+      userId: location.userId,
+      createdAt: location.createdAt,
+      updatedAt: location.updatedAt,
+      timeAgo: getTimeAgo(location.timestamp),
+      dateFormatted: formatDate(location.timestamp)
+    }));
+    
+    res.json({
+      locations: formattedLocations,
+      count: formattedLocations.length,
+      userId: userId,
+      interval: intervalValue,
+      unit: unit,
+      intervalMs: intervalMs,
+      requestedLimit: parseInt(limit),
+      totalLocations: allLocations.length,
+      summary: `Locations for user ${userId} at ${intervalValue} ${unit} intervals (${formattedLocations.length} of ${allLocations.length} total)`
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router; 
