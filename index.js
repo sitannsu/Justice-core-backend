@@ -34,6 +34,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const clientAuthRoutes = require('./routes/clientAuth');
 const clientRoutes = require('./routes/client');
 const locationRoutes = require('./routes/location');
+const intervalRoutes = require('./routes/interval');
 
 const User = require('./models/User');
 
@@ -158,6 +159,7 @@ app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client', clientRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/location', locationRoutes);
+app.use('/api/interval', intervalRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
