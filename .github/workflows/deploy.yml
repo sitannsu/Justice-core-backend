@@ -7,59 +7,118 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build Docker image
+      run: |
+        docker build -t justice-core-backend:${{ github.sha }} .
+        
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          echo "Starting deployment to EC2..."
+          
+          # Navigate to project directory (clone if first time)
+          cd /home/ec2-user/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ec2-user/justice-core-backend && cd /home/ec2-user/justice-core-backend)
+          
+          # Pull latest code
+          git pull origin main
+          
+          # Ensure .env file exists (copy from backup if needed)
+          if [ -f .env.backup ]; then
+            cp .env.backup .env
+          fi
+          
+          # Stop existing container
+          docker-compose down || true
+          
+          # Build and start new container
+          docker-compose up --build -d
+          
+          # Clean up old images
+          docker system prune -f
+          
+          # Health check with retry
+          echo "Waiting for application to start..."
+          sleep 15
+          echo "Running health check..."
+          name: Deploy to EC2
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
+on:
+  push:
+    branches: [ main ]
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Docker image (local runner) - optional
-        if: false
-        run: docker build -t justice-core-backend:${{ github.sha }} .
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            echo "Starting deployment to EC2..."
-
-            # Clone if not exists, otherwise ensure directory and pull
-            if [ ! -d /home/${{ secrets.EC2_USERNAME }}/justice-core-backend ]; then
-              git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/${{ secrets.EC2_USERNAME }}/justice-core-backend
-            fi
-
-            cd /home/${{ secrets.EC2_USERNAME }}/justice-core-backend
-            git fetch --all
-            git reset --hard origin/main
-
-            # Ensure .env file exists (copy from backup if needed)
-            if [ -f .env.backup ] && [ ! -f .env ]; then
-              cp .env.backup .env
-            fi
-
-            # Stop existing containers, build and start new ones
-            docker-compose down || true
-            docker-compose up --build -d
-
-            # Clean up old images
-            docker system prune -f
-
-            # Health check with retry
-            echo "Waiting for application to start..."
-            sleep 15
-            echo "Running health check..."
-            curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health) || exit 1
-
-            echo "Deployment completed successfully!"
-            echo "Application is live at: http://${{ secrets.EC2_HOST }}"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build Docker image
+      run: |
+        docker build -t justice-core-backend:${{ github.sha }} .
+        
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          echo "Starting deployment to EC2..."
+          
+          # Navigate to project directory (clone if first time)
+          cd /home/ubuntu/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ubuntu/justice-core-backend && cd /home/ubuntu/justice-core-backend)
+          
+          # Pull latest code
+          git pull origin main
+          
+          # Ensure .env file exists (copy from backup if needed)
+          if [ -f .env.backup ]; then
+            cp .env.backup .env
+          fi
+          
+          # Stop existing container
+          docker-compose down || true
+          
+          # Build and start new container
+          docker-compose up --build -d
+          
+          # Clean up old images
+          docker system prune -f
+          
+          # Health check with retry
+          echo "Waiting for application to start..."
+          sleep 15
+          echo "Running health check..."
+          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health) || exit 1
+          
+          echo "Deployment completed successfully!"
+          echo "Application is live at: http://${{ secrets.EC2_HOST }}"
