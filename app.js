@@ -66,27 +66,114 @@ app.use('/api/invoices', invoiceClientRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api', aiRoutes);
 
-// Error handling middleware
+
+// Basic health check
+app.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  
+  res.status(200).json({ 
+    status: 'OK', 
+    service: 'Justice Core Backend',
+    database: dbStatus,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+    version: '1.0.0'
+  });
+});
+
+// Detailed database health check
+app.get('/health/db', async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    
+    res.status(200).json({ 
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      details: {
+        host: mongoose.connection.host,
+        port: mongoose.connection.port,
+        name: mongoose.connection.name
+      }
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      database: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Simple test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    message: 'Justice Core Backend is running in Docker! 🐳',
+    timestamp: new Date().toISOString(),
+    success: true
+  });
+});
+
+// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: 'Something went wrong!' });
 });
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  family: 4, // Use IPv4, skip trying IPv6
-  retryWrites: true
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
 
-const PORT = process.env.PORT || 3006;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+//DB CONNECTION WITH RETRY LOGIC
+const connectWithRetry = () => {
+  console.log('Attempting to connect to MongoDB...');
+  
+  mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+    family: 4, 
+    retryWrites: true,
+    maxPoolSize: 10
+  })
+  .then(() => {
+    console.log(' Connected to MongoDB successfully!');
+    console.log(`Database: ${mongoose.connection.name}`);
+    console.log(` Connection: ${mongoose.connection.host}:${mongoose.connection.port}`);
+  })
+  .catch(err => {
+    console.error(' MongoDB connection error:', err.message);
+    console.log(' Retrying connection in 5 seconds...');
+    setTimeout(connectWithRetry, 5000);
+  });
+};
+
+// Start the connection
+connectWithRetry();
+
+// MongoDB connection events
+mongoose.connection.on('disconnected', () => {
+  console.log(' MongoDB disconnected');
 });
+
+mongoose.connection.on('error', (err) => {
+  console.error(' MongoDB connection error:', err);
+});
+
+// Start server
+const PORT = process.env.PORT || 3006;
+
+// Only start server if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log('='.repeat(50));
+    console.log(' Justice Core Backend Server Started');
+    console.log('='.repeat(50));
+    console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Server running on: http://localhost:${PORT}`);
+    console.log(` Health check: http://localhost:${PORT}/health`);
+    console.log(` DB Health: http://localhost:${PORT}/health/db`);
+    console.log(` Test endpoint: http://localhost:${PORT}/api/test`);
+    console.log('='.repeat(50));
+  });
+}
 
 module.exports = app;
