@@ -39,6 +39,12 @@ jobs:
         script: |
           echo "Starting deployment to EC2..."
           
+          # Install Nginx if not already installed
+          if ! command -v nginx &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y nginx
+          fi
+          
           # Navigate to project directory (clone if first time)
           cd /home/ec2-user/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ec2-user/justice-core-backend && cd /home/ec2-user/justice-core-backend)
           
@@ -59,40 +65,39 @@ jobs:
           # Clean up old images
           docker system prune -f
           
-          # Health check with retry
+          # Copy Nginx configuration
+          sudo cp ./nginx/justice-core.conf /etc/nginx/sites-available/justice-core
+
+          # Enable the site and remove default if it exists
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo ln -sf /etc/nginx/sites-available/justice-core /etc/nginx/sites-enabled/
+
+          # Test Nginx configuration
+          sudo nginx -t
+          
+          # Restart Nginx
+          sudo systemctl restart nginx
+
+          # Wait for application to start
           echo "Waiting for application to start..."
           sleep 15
-          echo "Running health check..."
-          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health) || exit 1
+          
+          # Health check with retry (using both localhost and public IP)
+          echo "Running health check on localhost..."
+          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health)
+          
+          echo "Running health check on public IP..."
+          curl -f http://43.205.94.149/health || (echo "Public health check failed, retrying..." && sleep 10 && curl -f http://43.205.94.149/health) || exit 1
+          
+          # Verify Nginx status and show logs
+          echo "Checking Nginx status..."
+          sudo systemctl status nginx
+          
+          echo "Checking listening ports..."
+          sudo netstat -tlpn | grep -E ':80|:3006'
+          
+          echo "Checking Nginx error log..."
+          sudo tail -n 50 /var/log/nginx/error.log
           
           echo "Deployment completed successfully!"
-          echo "Application is live at: http://${{ secrets.EC2_HOST }}"
-          
-          # Navigate to project directory (clone if first time)
-          cd /home/ubuntu/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ubuntu/justice-core-backend && cd /home/ubuntu/justice-core-backend)
-          
-          # Pull latest code
-          git pull origin main
-          
-          # Ensure .env file exists (copy from backup if needed)
-          if [ -f .env.backup ]; then
-            cp .env.backup .env
-          fi
-          
-          # Stop existing container
-          docker-compose down || true
-          
-          # Build and start new container
-          docker-compose up --build -d
-          
-          # Clean up old images
-          docker system prune -f
-          
-          # Health check with retry
-          echo "Waiting for application to start..."
-          sleep 15
-          echo "Running health check..."
-          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health) || exit 1
-          
-          echo "Deployment completed successfully!"
-          echo "Application is live at: http://${{ secrets.EC2_HOST }}"
+          echo "Application is live at: http://43.205.94.149"
