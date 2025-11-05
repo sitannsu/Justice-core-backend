@@ -21,12 +21,10 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Build Docker image
-      run: |
-        docker build -t justice-core-backend:${{ github.sha }} .
-        
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.0.3
+      env:
+        DOCKER_IMAGE: justice-core-backend:${{ github.sha }}
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USERNAME }}
@@ -35,32 +33,27 @@ jobs:
           echo "Starting deployment to EC2..."
           
           # Navigate to project directory (clone if first time)
-          cd /home/ec2-user/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ec2-user/justice-core-backend && cd /home/ec2-user/justice-core-backend)
+          cd /home/ubuntu/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ubuntu/justice-core-backend && cd /home/ubuntu/justice-core-backend)
           
           # Pull latest code
           git pull origin main
           
-          # Ensure .env file exists (copy from backup if needed)
+          # Ensure .env file exists
           if [ -f .env.backup ]; then
             cp .env.backup .env
           fi
           
-          # Stop existing container
+          # Build and deploy using docker-compose
           docker-compose down || true
-          
-          # Build and start new container
           docker-compose up --build -d
           
-          # Clean up old images
+          # Cleanup
           docker system prune -f
           
-          # Health check with retry
+          # Health check
           echo "Waiting for application to start..."
           sleep 15
-          echo "Running health check..."
-          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health) || exit 1
+          curl -f http://localhost:3006/health || (sleep 10 && curl -f http://localhost:3006/health) || exit 1
           
           echo "Deployment completed successfully!"
-          echo "Application is live at: http://${{ secrets.EC2_HOST }}"
-          name: Deploy to EC2
-          
+
