@@ -1,0 +1,262 @@
+{
+	"info": {
+		"_postman_id": "b5e2e3c0-1e8a-4f2f-8f2e-3c01e8a4f2f8",
+		"name": "Location APIs",
+		"description": "Collection for Location Management APIs",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Location Intervals",
+			"item": [
+				{
+					"name": "Create Interval",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-auth-token",
+								"value": "{{authToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"locationId\": \"{{locationId}}\",\n    \"startTime\": \"09:00\",\n    \"endTime\": \"17:00\",\n    \"days\": [\"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/interval",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "interval"]
+						},
+						"description": "Create a new location interval"
+					}
+				},
+				{
+					"name": "Get All Intervals",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-auth-token",
+								"value": "{{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/interval",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "interval"]
+						},
+						"description": "Get all location intervals"
+					}
+				},
+				{
+					"name": "Get Intervals by Location",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-auth-token",
+								"value": "{{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/interval/location/{{locationId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "interval", "location", "{{locationId}}"]
+						},
+						"description": "Get intervals for a specific location"
+					}
+				},
+				{
+					"name": "Get Interval by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-auth-token",
+								"value": "{{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/interval/{{intervalId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "interval", "{{intervalId}}"]
+						},
+						"description": "Get a specific interval by ID"
+					}
+				},
+				{
+					"name": "Update Interval",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-auth-token",
+								"value": "{{authToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"startTime\": \"10:00\",\n    \"endTime\": \"18:00\",\n    \"days\": [\"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/interval/{{intervalId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "interval", "{{intervalId}}"]
+						},
+						"description": "Update an existing interval"
+					}
+				},
+				{
+					"name": "Delete Interval",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "x-auth-token",
+								"value": "{{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/interval/{{intervalId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "interval", "{{intervalId}}"]
+						},
+						"description": "Delete an interval"
+					}
+				}
+			]
+		},
+		{
+			"name": "Create Location",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "x-auth-token",
+						"value": "{{authToken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"Main Office\",\n    \"address\": \"123 Business Park\",\n    \"city\": \"Mumbai\",\n    \"state\": \"Maharashtra\",\n    \"country\": \"India\",\n    \"pincode\": \"400001\",\n    \"coordinates\": {\n        \"latitude\": 19.0760,\n        \"longitude\": 72.8777\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/locations",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "locations"]
+				},
+				"description": "Create a new location"
+			}
+		},
+		{
+			"name": "Get All Locations",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-auth-token",
+						"value": "{{authToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/locations",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "locations"]
+				},
+				"description": "Retrieve all locations"
+			}
+		},
+		{
+			"name": "Get Location by ID",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-auth-token",
+						"value": "{{authToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/locations/{{locationId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "locations", "{{locationId}}"]
+				},
+				"description": "Get a specific location by ID"
+			}
+		},
+		{
+			"name": "Update Location",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "x-auth-token",
+						"value": "{{authToken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"Updated Main Office\",\n    \"address\": \"124 Business Park\",\n    \"city\": \"Mumbai\",\n    \"state\": \"Maharashtra\",\n    \"country\": \"India\",\n    \"pincode\": \"400001\",\n    \"coordinates\": {\n        \"latitude\": 19.0760,\n        \"longitude\": 72.8777\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/locations/{{locationId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "locations", "{{locationId}}"]
+				},
+				"description": "Update an existing location"
+			}
+		},
+		{
+			"name": "Delete Location",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "x-auth-token",
+						"value": "{{authToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/api/locations/{{locationId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "locations", "{{locationId}}"]
+				},
+				"description": "Delete a location"
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://justice-core-backend.onrender.com"
+		}
+	]
+}
