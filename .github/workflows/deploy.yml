@@ -35,7 +35,7 @@ jobs:
           echo "Starting deployment to EC2..."
           
           # Navigate to project directory (clone if first time)
-          cd /home/ubuntu/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ubuntu/justice-core-backend && cd /home/ubuntu/justice-core-backend)
+          cd /home/ec2-user/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ec2-user/justice-core-backend && cd /home/ec2-user/justice-core-backend)
           
           # Pull latest code
           git pull origin main
@@ -54,11 +54,13 @@ jobs:
           # Clean up old images
           docker system prune -f
           
-          # Health check with retry (using nginx on port 80)
-          echo " Waiting for application to start..."
+          # Health check with retry
+          echo "Waiting for application to start..."
           sleep 15
-          echo " Running health check...."
-          curl -f http://localhost/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost/health) || exit 1
+          echo "Running health check..."
+          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health) || exit 1
           
-          echo " Deployment completed successfully!"
+          echo "Deployment completed successfully!"
           echo "Application is live at: http://${{ secrets.EC2_HOST }}"
+          name: Deploy to EC2
+          
