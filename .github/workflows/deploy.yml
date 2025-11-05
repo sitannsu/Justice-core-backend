@@ -58,7 +58,7 @@ jobs:
           echo "Waiting for application to start..."
           sleep 15
           echo "Running health check..."
-         name: Deploy to EC2
+          name: Deploy to EC2
 
 on:
   push:
