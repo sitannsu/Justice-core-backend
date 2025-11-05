@@ -18,11 +18,16 @@ jobs:
         node-version: '18'
         cache: 'npm'
         
-    - name: Install dependencies
-      run: npm ci
+    - name: Install dependencies and update lock file
+      run: |
+        npm install
+        npm install --package-lock-only
       
     - name: Build Docker image
       run: |
+        # First clean install to ensure everything is in sync
+        npm ci
+        # Then build the Docker image
         docker build -t justice-core-backend:${{ github.sha }} .
         
     - name: Deploy to EC2
