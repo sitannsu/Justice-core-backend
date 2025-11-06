@@ -87,7 +87,7 @@ jobs:
           curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health)
           
           echo "Running health check on public IP..."
-          curl -f http://43.205.94.149:3006/health || (echo "Public health check failed, retrying..." && sleep 10 && curl -f http://43.205.94.149/health) || exit 1
+          curl -f http://43.205.94.149:3006/health || (echo "Public health check failed, retrying..." && sleep 10 && curl -f http://43.205.94.149:3006/health) || exit 1
           
           # Verify Nginx status and show logs
           echo "Checking Nginx status..."
