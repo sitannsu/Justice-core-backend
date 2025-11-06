@@ -56,7 +56,9 @@ jobs:
           # Navigate to project directory (clone if first time)
           cd /home/ubuntu/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ubuntu/justice-core-backend && cd /home/ubuntu/justice-core-backend)
           
-          # Pull latest code from master branch
+          # Reset any local changes and pull latest code
+          git reset --hard
+          git clean -fd
           git pull origin master
           
           # Ensure .env file exists (copy from backup if needed)
@@ -94,15 +96,37 @@ jobs:
           echo "Waiting for application to start..."
           sleep 15
           
-          # Health check with retry (using both direct and Nginx)
+          # Health check with retry and debugging
           echo "Running direct health check..."
-          curl -f http://localhost:3006/health || (echo "Direct health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health)
+          curl -v http://localhost:3006/health || (echo "Direct health check failed, retrying..." && sleep 10 && curl -v http://localhost:3006/health)
+          
+          echo "Verifying Nginx configuration..."
+          sudo nginx -t
+          sudo systemctl status nginx
           
           echo "Running Nginx health check..."
-          curl -f http://localhost/health || (echo "Nginx health check failed, retrying..." && sleep 10 && curl -f http://localhost/health)
+          curl -v http://localhost/health || (
+            echo "Nginx health check failed. Debugging info:"
+            echo "Nginx error log:"
+            sudo tail -n 50 /var/log/nginx/error.log
+            echo "Nginx access log:"
+            sudo tail -n 50 /var/log/nginx/access.log
+            echo "Retrying health check..."
+            sleep 10 
+            curl -v http://localhost/health
+          )
           
           echo "Running public health check..."
-          curl -f http://${{ secrets.EC2_HOST }}/health || (echo "Public health check failed, retrying..." && sleep 10 && curl -f http://${{ secrets.EC2_HOST }}/health) || exit 1
+          curl -v http://${{ secrets.EC2_HOST }}/health || (
+            echo "Public health check failed. Debugging info:"
+            echo "Network status:"
+            sudo ss -tlnp | grep -E ':80|:3006'
+            echo "Nginx config:"
+            cat /etc/nginx/sites-available/justice-core
+            echo "Retrying health check..."
+            sleep 10
+            curl -v http://${{ secrets.EC2_HOST }}/health
+          ) || exit 1
           
           # Verify Nginx status and show logs
           echo "Checking Nginx status..."
