@@ -39,14 +39,22 @@ jobs:
         script: |
           echo "Starting deployment to EC2..."
           
-          # Install Nginx if not already installed
+          # Install required packages
           if ! command -v nginx &> /dev/null; then
             sudo apt-get update
             sudo apt-get install -y nginx
           fi
+
+          # Install dos2unix for line ending fixes
+          if ! command -v dos2unix &> /dev/null; then
+            sudo apt-get install -y dos2unix
+          fi
+
+          # Create Nginx directories if they don't exist
+          sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
           
           # Navigate to project directory (clone if first time)
-          cd /home/ec2-user/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ec2-user/justice-core-backend && cd /home/ec2-user/justice-core-backend)
+          cd /home/ubuntu/justice-core-backend || (git clone https://github.com/ALLINONETECH/justice-core-backend.git /home/ubuntu/justice-core-backend && cd /home/ubuntu/justice-core-backend)
           
           # Pull latest code from master branch
           git pull origin master
@@ -65,15 +73,19 @@ jobs:
           # Clean up old images
           docker system prune -f
           
-          # Copy Nginx configuration
+          # Copy and fix Nginx configuration
           sudo cp ./nginx/justice-core.conf /etc/nginx/sites-available/justice-core
+          sudo dos2unix /etc/nginx/sites-available/justice-core
 
           # Enable the site and remove default if it exists
           sudo rm -f /etc/nginx/sites-enabled/default
           sudo ln -sf /etc/nginx/sites-available/justice-core /etc/nginx/sites-enabled/
 
-          # Test Nginx configuration
+          # Test Nginx configuration and show any errors
           sudo nginx -t
+          
+          # Make sure nginx user has proper permissions
+          sudo chown -R www-data:www-data /etc/nginx/sites-available/justice-core
           
           # Restart Nginx
           sudo systemctl restart nginx
@@ -82,12 +94,15 @@ jobs:
           echo "Waiting for application to start..."
           sleep 15
           
-          # Health check with retry (using both localhost and public IP)
-          echo "Running health check on localhost..."
-          curl -f http://localhost:3006/health || (echo "Health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health)
+          # Health check with retry (using both direct and Nginx)
+          echo "Running direct health check..."
+          curl -f http://localhost:3006/health || (echo "Direct health check failed, retrying..." && sleep 10 && curl -f http://localhost:3006/health)
           
-          echo "Running health check on public IP..."
-          curl -f http://3.109.112.149:3006/health || (echo "Public health check failed, retrying..." && sleep 10 && curl -f http://3.109.112.149:3006/health) || exit 1
+          echo "Running Nginx health check..."
+          curl -f http://localhost/health || (echo "Nginx health check failed, retrying..." && sleep 10 && curl -f http://localhost/health)
+          
+          echo "Running public health check..."
+          curl -f http://${{ secrets.EC2_HOST }}/health || (echo "Public health check failed, retrying..." && sleep 10 && curl -f http://${{ secrets.EC2_HOST }}/health) || exit 1
           
           # Verify Nginx status and show logs
           echo "Checking Nginx status..."
@@ -100,4 +115,4 @@ jobs:
           sudo tail -n 50 /var/log/nginx/error.log
           
           echo "Deployment completed successfully!"
-          echo "Application is live at: http://43.205.94.149"
+          echo "Application is live at: http://${{ secrets.EC2_HOST }}"
