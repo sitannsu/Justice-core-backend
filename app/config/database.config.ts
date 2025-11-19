@@ -4,7 +4,7 @@ dotenv.config();
 
 export const databaseConfig = {
   mongodb: {
-    url: process.env.MONGODB_URI || 'mongodb://localhost:27017/legalplatform',
+    url: process.env.MONGODB_URI || 'mongodb://adminUser:Admin12345@3.109.112.149:27017/legalplatform',
     options: {
       useNewUrlParser: true,
       useUnifiedTopology: true,
