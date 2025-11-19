@@ -15,6 +15,22 @@ router.get('/conversations', auth, async (req, res) => {
   res.json(list);
 });
 
+// Get a single conversation with participants
+router.get('/conversations/:id', auth, async (req, res) => {
+  try {
+    const conv = await ChatConversation.findById(req.params.id)
+      .populate('participants', 'firstName lastName email');
+
+    if (!conv || !conv.participants.map(String).includes(req.user.userId)) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    res.json(conv);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 // Create or get a conversation with specific participants
 router.post('/conversations', auth, async (req, res) => {
   try {

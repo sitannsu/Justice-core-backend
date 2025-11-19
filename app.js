@@ -21,6 +21,8 @@ const attorneyRoutes = require('./routes/attorney');
 const caseActivityRoutes = require('./routes/caseActivity');
 const intakeRoutes = require('./routes/intake');
 const researchRoutes = require('./routes/research');
+const judgmentRoutes = require('./routes/judgments');
+const organizationRoutes = require('./routes/organization');
 const voiceMemoRoutes = require('./routes/voiceMemo');
 const documentAutomationRoutes = require('./routes/documentAutomation');
 const chatRoutes = require('./routes/chat');
@@ -29,8 +31,15 @@ const googleCalendarRoutes = require('./routes/googleCalendar');
 const paymentsRoutes = require('./routes/payments');
 const invoiceClientRoutes = require('./routes/invoice');
 const departmentRoutes = require('./routes/department');
+const emailRoutes = require('./routes/email');
 
 const app = express();
+
+// Log method and full URL for every request
+app.use((req, res, next) => {
+  console.log(`[API] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Middleware
 app.use(cors());
@@ -56,6 +65,9 @@ app.use('/api/attorneys', attorneyRoutes);
 app.use('/api/case-activities', caseActivityRoutes);
 app.use('/api/intake', intakeRoutes);
 app.use('/api/research', researchRoutes);
+app.use('/api/legal-research', researchRoutes);
+app.use('/api/judgments', judgmentRoutes);
+app.use('/api/organization', organizationRoutes);
 app.use('/api/voice-memos', voiceMemoRoutes);
 app.use('/api', documentAutomationRoutes);
 app.use('/api/chat', chatRoutes);
@@ -65,6 +77,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/invoices', invoiceClientRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api', aiRoutes);
+app.use('/api/email', emailRoutes);
 
 
 // Basic health check

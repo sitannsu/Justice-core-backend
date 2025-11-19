@@ -256,27 +256,55 @@ Please provide a comprehensive legal analysis following the specified format.`;
 
       const analysisContent = completion.choices[0].message.content;
       
-      // Parse the JSON response
+      // Parse the JSON response (strip code fences if present)
       let analysis;
       try {
-        analysis = JSON.parse(analysisContent);
+        let cleaned = analysisContent || '';
+        if (cleaned.startsWith('```')) {
+          // Remove leading ```json or ```
+          cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '');
+          // Remove trailing ``` if present
+          cleaned = cleaned.replace(/```\s*$/i, '');
+        }
+        analysis = JSON.parse(cleaned);
       } catch (parseError) {
         console.error('Error parsing OpenAI response:', parseError);
         analysis = {
           clauses: [],
-          riskAssessment: { overallRiskScore: 50, riskFactors: { high: [], medium: [], low: [] } },
+          riskAssessment: { overallRiskScore: 50, riskFactors: {} },
           missingClauses: ['Unable to parse analysis'],
           complianceIssues: ['Unable to parse analysis'],
           recommendations: ['Please review the contract manually'],
           summary: 'Analysis completed but response format was invalid'
         };
       }
-      
+
+      // Safely map risk factors into the Map schema { key: { level, description, impact } }
+      const rawRiskFactors = analysis.riskAssessment?.riskFactors;
+      let riskAssessmentMap = undefined;
+      if (rawRiskFactors && typeof rawRiskFactors === 'object' && !Array.isArray(rawRiskFactors)) {
+        riskAssessmentMap = {};
+        const levels = ['high', 'medium', 'low'];
+        levels.forEach((level) => {
+          const items = rawRiskFactors[level];
+          if (Array.isArray(items)) {
+            items.forEach((desc, idx) => {
+              const key = `${level}_${idx + 1}`;
+              riskAssessmentMap[key] = {
+                level,
+                description: String(desc),
+                impact: level === 'high' ? 'high' : level === 'medium' ? 'medium' : 'low'
+              };
+            });
+          }
+        });
+      }
+
       // Update contract with analysis results
       contract.aiKeyClauses = analysis.clauses || [];
       contract.aiRiskFactors = {
         overallRiskScore: analysis.riskAssessment?.overallRiskScore || 50,
-        riskAssessment: analysis.riskAssessment?.riskFactors || {},
+        riskAssessment: riskAssessmentMap || {},
         missingClauses: analysis.missingClauses || [],
         complianceIssues: analysis.complianceIssues || [],
         recommendations: analysis.recommendations || []

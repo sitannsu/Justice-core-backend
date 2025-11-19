@@ -8,11 +8,10 @@ const clientAuthMiddleware = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    if (!decoded.clientId) {
+    if (!decoded.role || decoded.role !== 'client' || !decoded.id) {
       return res.status(401).json({ message: 'Invalid client token' });
     }
-    
-    req.user = { clientId: decoded.clientId };
+    req.user = { id: decoded.id, clientId: decoded.id, role: decoded.role, email: decoded.email };
     next();
   } catch (error) {
     res.status(401).json({ message: 'Invalid token' });

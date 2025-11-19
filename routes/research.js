@@ -83,6 +83,45 @@ router.get('/search', auth, async (req, res) => {
   }
 });
 
+// POST /search alias so frontend can use either GET with query params or POST with JSON body
+router.post('/search', auth, async (req, res) => {
+  // Map JSON body to query string fields and delegate to the same handler logic
+  const { query, language } = req.body || {};
+  req.query.q = query || req.query.q || '';
+  if (language) req.query.lang = language;
+  return router.handle(req, res);
+});
+
+// Stub suggestions endpoint for legal research autocomplete
+router.get('/suggestions', auth, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+
+  // Very simple suggestion stub: echo query with a few variants
+  res.json([
+    q,
+    `${q} case law`,
+    `${q} Supreme Court`,
+    `${q} High Court`,
+  ]);
+});
+
+// Stub: list available legal databases for frontend UI
+router.get('/databases', auth, async (req, res) => {
+  // For now return a static list; can be wired to real providers later
+  res.json([
+    { id: 'local', name: 'Local Documents & Cases', enabled: true },
+    { id: 'kanoon', name: 'Indian Kanoon (stub)', enabled: false },
+    { id: 'indiacode', name: 'India Code (stub)', enabled: false },
+  ]);
+});
+
+// Stub: recent legal research searches for current user
+router.get('/recent', auth, async (req, res) => {
+  // No persistence yet; return empty list so UI doesnt error
+  res.json([]);
+});
+
 module.exports = router;
 
 

@@ -8,6 +8,12 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = process.env.PORT || 3006;
 
+// Log method and full URL for every request
+app.use((req, res, next) => {
+  console.log(`[API] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 app.use(cors({
   origin: ['http://localhost:3006', 'http://192.168.1.122:3006', 'http://192.168.1.122:3006', 'http://localhost:3006'],
   credentials: true,
@@ -40,6 +46,7 @@ const voiceMemoRoutes = require('./routes/voiceMemo');
 const automationRoutes = require('./routes/automation');
 const documentAutomationRoutes = require('./routes/documentAutomation');
 const chatRoutes = require('./routes/chat');
+const emailRoutes = require('./routes/email');
 
 const User = require('./models/User');
 
@@ -169,6 +176,7 @@ app.use('/api/voice-memos', voiceMemoRoutes);
 app.use('/api/automation', automationRoutes);
 app.use('/api', documentAutomationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/email', emailRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

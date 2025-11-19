@@ -74,38 +74,56 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login user
+// Unified Login for User and Client
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Validate input
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    // Find user
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    // Try User model first
+    let user = await User.findOne({ email });
+    let isClient = false;
+    if (user) {
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+    } else {
+      // Try Client model
+      user = await Client.findOne({ email });
+      isClient = true;
+      if (!user) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
     }
 
-    // Verify password using the User model's comparePassword method
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    // Generate token
+    // Standardize payload: always id, email, role
     const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
+      { id: user._id, email: user.email, role: user.role || (isClient ? 'client' : undefined) },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
 
-    res.json({
-      token,
-      user: {
+    // Standardize user response
+    let userResponse;
+    if (isClient) {
+      userResponse = {
+        id: user._id,
+        email: user.email,
+        contactPerson: user.contactPerson,
+        company: user.company,
+        role: 'client',
+        accountType: user.accountType,
+        status: user.status
+      };
+    } else {
+      userResponse = {
         id: user._id,
         email: user.email,
         firstName: user.firstName,
@@ -115,8 +133,10 @@ router.post('/login', async (req, res) => {
         numberOfEmployees: user.numberOfEmployees,
         phoneNumber: user.phoneNumber,
         zipCode: user.zipCode
-      }
-    });
+      };
+    }
+
+    res.json({ token, user: userResponse });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Server error during login' });

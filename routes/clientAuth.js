@@ -64,9 +64,9 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // Generate JWT token
+    // Generate JWT token (unified structure)
     const token = jwt.sign(
-      { clientId: client._id, email: client.email },
+      { id: client._id, email: client.email, role: 'client' },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
@@ -78,7 +78,8 @@ router.post('/login', async (req, res) => {
         company: client.company,
         contactPerson: client.contactPerson,
         email: client.email,
-        accountType: client.accountType
+        accountType: client.accountType,
+        role: 'client'
       }
     });
   } catch (error) {

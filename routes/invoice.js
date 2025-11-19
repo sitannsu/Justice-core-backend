@@ -136,7 +136,7 @@ router.get('/recent-activity', auth, async (req, res) => {
 // Client portal: list invoices by logged-in client
 router.get('/client', clientAuth, async (req, res) => {
   try {
-    const list = await Invoice.find({ client: req.user.clientId })
+    const list = await Invoice.find({ client: req.user.id })
       .populate('case', 'caseName caseNumber')
       .sort({ createdAt: -1 });
     res.json(list);

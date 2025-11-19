@@ -29,7 +29,7 @@ router.post('/', authMiddleware, async (req, res) => {
     console.log('Request body keys:', Object.keys(req.body));
     console.log('Request headers:', req.headers);
     console.log('Content-Type header:', req.headers['content-type']);
-    console.log('User ID from auth:', req.user.userId);
+    console.log('User ID from auth:', req.user.id);
 
     // Try to manually parse the body if it's a string
     let bodyData = req.body;
@@ -127,7 +127,7 @@ router.post('/', authMiddleware, async (req, res) => {
       staff: staff || [],
       assignedAttorney: assignedAttorney || undefined,
       customFields: customFields || {},
-      lawyer: req.user.userId
+      lawyer: req.user.id
     };
 
     console.log('Case data to be saved:', caseData);
@@ -174,8 +174,8 @@ router.post('/', authMiddleware, async (req, res) => {
 // Get all cases for a lawyer
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const cases = await Case.find({ lawyer: req.user.userId })
-      .populate('clients', 'firstName lastName email')
+    const cases = await Case.find({ lawyer: req.user.id })
+      .populate('clients', 'contactPerson company email')
       .populate('contacts', 'firstName lastName email')
       .populate('staff', 'firstName lastName email')
       .populate('lawyer', 'firstName lastName email')
@@ -195,7 +195,7 @@ router.get('/client/:clientId', authMiddleware, async (req, res) => {
     
     // Find cases where the client is in the clients array
     const cases = await Case.find({ 
-      lawyer: req.user.userId,
+      lawyer: req.user.id,
       clients: clientId 
     })
       .populate('clients', 'firstName lastName email companyName')
@@ -217,7 +217,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const caseItem = await Case.findOne({ 
       _id: req.params.id,
-      lawyer: req.user.userId 
+      lawyer: req.user.id 
     })
       .populate('clients', 'firstName lastName email')
       .populate('contacts', 'firstName lastName email')
@@ -239,7 +239,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const caseItem = await Case.findOne({ 
       _id: req.params.id,
-      lawyer: req.user.userId 
+      lawyer: req.user.id 
     });
 
     if (!caseItem) {
@@ -272,7 +272,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const caseItem = await Case.findOneAndDelete({ 
       _id: req.params.id,
-      lawyer: req.user.userId 
+      lawyer: req.user.id 
     });
 
     if (!caseItem) {

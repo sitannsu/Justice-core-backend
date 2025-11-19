@@ -9,10 +9,10 @@ class EmailService {
   getTransporter() {
     if (!this.transporter) {
       this.transporter = nodemailer.createTransport({
-        service: 'Outlook365', // Use Outlook365 service
+        service: 'gmail',
         auth: {
-          user: process.env.EMAIL_USER || '',
-          pass: process.env.EMAIL_PASS || ''
+          user: 'docket.digital2025@gmail.com',
+          pass: 'wtme miaf qnwm ghed'
         }
       });
     }
