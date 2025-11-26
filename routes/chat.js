@@ -4,8 +4,26 @@ const auth = require('../middleware/auth');
 const ChatConversation = require('../models/ChatConversation');
 const ChatMessage = require('../models/ChatMessage');
 const User = require('../models/User');
+const Department = require('../models/Department');
 const mongoose = require('mongoose');
 const OpenAI = require('openai');
+
+// Conversation types - dynamic by org setup
+router.get('/types', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const tenantId = user?.tenant_id || 'default';
+    const hasDepartments = await Department.exists({ tenant_id: tenantId, is_active: true });
+    const types = ['team'];
+    if (hasDepartments) types.push('department');
+    // Keep 'project' available for now (can be tied to a Projects model in future)
+    types.push('project');
+    res.json({ types });
+  } catch (e) {
+    console.error('Error getting chat types:', e);
+    res.status(500).json({ message: 'Failed to load chat types' });
+  }
+});
 
 // List conversations for current user (lawyer)
 router.get('/conversations', auth, async (req, res) => {
@@ -21,12 +39,19 @@ router.get('/conversations/:id', auth, async (req, res) => {
     const conv = await ChatConversation.findById(req.params.id)
       .populate('participants', 'firstName lastName email');
 
-    if (!conv || !conv.participants.map(String).includes(req.user.userId)) {
+    if (!conv) {
       return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    // After population, participants are User documents; compare against _id safely
+    const participantIds = (conv.participants || []).map(p => String(p?._id || p));
+    if (!participantIds.includes(String(req.user.userId))) {
+      return res.status(403).json({ message: 'Access denied' });
     }
 
     res.json(conv);
   } catch (e) {
+    console.error('Get conversation error:', e);
     res.status(500).json({ message: e.message });
   }
 });
@@ -34,7 +59,7 @@ router.get('/conversations/:id', auth, async (req, res) => {
 // Create or get a conversation with specific participants
 router.post('/conversations', auth, async (req, res) => {
   try {
-    const { participantIds = [], title } = req.body;
+    const { participantIds = [], title, description, type, departmentId } = req.body;
     const otherIds = (Array.isArray(participantIds) ? participantIds : [])
       .map((id) => new mongoose.Types.ObjectId(id))
       .filter((id) => String(id) !== String(req.user.userId));
@@ -42,9 +67,19 @@ router.post('/conversations', auth, async (req, res) => {
     const participants = [selfId, ...otherIds];
 
     // Try to find existing conversation with exactly these participants
-    let conv = await ChatConversation.findOne({ participants: { $all: participants } });
+    // If a specific type/department is provided, include it in the match to avoid collapsing department chats into team chats
+    const match = { participants: { $all: participants } };
+    if (type && ['team','department','project'].includes(type)) match.type = type;
+    if (departmentId && type === 'department') match.departmentId = departmentId;
+    let conv = await ChatConversation.findOne(match);
     if (!conv || conv.participants.length !== participants.length) {
-      conv = await ChatConversation.create({ participants, title });
+      conv = await ChatConversation.create({ 
+        participants, 
+        title, 
+        description: description || '', 
+        type: ['team', 'department', 'project'].includes(type) ? type : 'team',
+        departmentId: departmentId || undefined
+      });
     }
     // populate both participants
     await conv.populate('participants', 'firstName lastName email');
