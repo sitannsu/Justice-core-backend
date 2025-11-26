@@ -339,7 +339,12 @@ router.get('/preview/:documentId', async (req, res) => {
         return res.status(401).json({ message: 'Token expired' });
       }
       
-      req.user = { userId: decoded.userId };
+      // Support both { id } and { userId } payloads
+      const userId = decoded.userId || decoded.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Invalid token payload' });
+      }
+      req.user = { userId };
     } catch (jwtError) {
       console.error('JWT verification error:', jwtError);
       return res.status(401).json({ message: 'Invalid token' });
@@ -393,6 +398,77 @@ router.get('/preview/:documentId', async (req, res) => {
   } catch (error) {
     console.error('Error previewing document:', error);
     res.status(500).json({ message: 'Server error while previewing document' });
+  }
+});
+
+// Download (token-based POST for browser form submission)
+router.post('/download/:documentId', async (req, res) => {
+  try {
+    const { documentId } = req.params;
+    const { token } = req.body || {};
+
+    // Validate token manually
+    if (!token) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.exp && Date.now() >= decoded.exp * 1000) {
+        return res.status(401).json({ message: 'Token expired' });
+      }
+      const userId = decoded.userId || decoded.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Invalid token payload' });
+      }
+      req.user = { userId };
+    } catch (jwtError) {
+      console.error('JWT verification error:', jwtError);
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
+    const document = await Document.findById(documentId).populate('case', 'lawyer');
+    if (!document) {
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    // Permission check
+    if (document.case && document.case.lawyer.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Access denied to this document' });
+    }
+
+    // S3 download
+    if (document.s3Bucket && document.s3Key) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: document.s3Bucket,
+          Key: document.s3Key,
+        });
+        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        // Redirect to signed URL (download)
+        return res.redirect(signedUrl);
+      } catch (s3Error) {
+        console.error('Error generating S3 signed URL:', s3Error);
+        return res.status(500).json({ message: 'Error accessing file from S3' });
+      }
+    }
+
+    // Local fallback
+    const fs = require('fs');
+    if (!fs.existsSync(document.filePath)) {
+      return res.status(404).json({ message: 'File not found on server' });
+    }
+    res.setHeader('Content-Type', document.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${document.originalName}"`);
+    res.setHeader('Content-Length', document.fileSize);
+    fs.createReadStream(document.filePath).pipe(res);
+  } catch (error) {
+    console.error('Error downloading document (POST):', error);
+    res.status(500).json({ message: 'Server error while downloading document' });
   }
 });
 

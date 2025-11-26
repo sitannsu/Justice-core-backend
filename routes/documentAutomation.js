@@ -3,12 +3,14 @@ const router = express.Router();
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const OpenAI = require('openai');
 const auth = require('../middleware/auth');
 const DocumentAutomation = require('../models/DocumentAutomation');
 const Template = require('../models/Template');
 const Case = require('../models/Case');
 const Client = require('../models/Client');
 const DocumentRun = require('../models/DocumentRun');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -55,6 +57,55 @@ router.post('/templates', auth, upload.single('file'), async (req, res) => {
   }
 });
 
+// AI-assisted search for templates
+router.post('/templates/search-ai', auth, async (req, res) => {
+  try {
+    const { q } = req.body || {};
+    if (!q || !String(q).trim()) {
+      return res.json([]);
+    }
+
+    // Ask OpenAI to expand the query into keywords
+    let keywords = [];
+    try {
+      const prompt = `You are helping search legal document templates. 
+User query: "${q}"
+Return a concise JSON with up to 6 keywords/phrases likely to match template names, types, or placeholders.
+Format strictly as: {"keywords":["..."]}`;
+      const ai = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You expand queries into search keywords in JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2
+      });
+      const text = ai.choices?.[0]?.message?.content || '';
+      const json = JSON.parse(text);
+      if (Array.isArray(json.keywords)) {
+        keywords = json.keywords.slice(0, 6).map((k) => String(k));
+      }
+    } catch (err) {
+      // Fallback to simple split
+      keywords = String(q).split(/\s+/).slice(0, 6);
+    }
+
+    const regexes = keywords.map((k) => new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    const filter = {
+      createdBy: req.user.userId,
+      $or: [
+        { name: { $in: regexes } },
+        { type: { $in: regexes } },
+        { placeholders: { $in: keywords } }
+      ]
+    };
+    const results = await Template.find(filter).sort({ updatedAt: -1 }).limit(25);
+    res.json(results);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 // Automations list with search/filter/sort/pagination
 router.get('/documents/automation', auth, async (req, res) => {
   try {
@@ -74,7 +125,7 @@ router.get('/documents/automation', auth, async (req, res) => {
 
 router.post('/documents/automation', auth, upload.single('templateFile'), async (req, res) => {
   try {
-    const { name, type, caseId, clientId, trigger, triggerDetails, templateId, mappings, recipients, status } = req.body;
+    const { name, type, caseId, clientId, trigger, triggerDetails, templateId, mappings, recipients, status, templatePlaceholders } = req.body;
     let tplId = templateId;
     let templatePath;
     let placeholders = [];
@@ -91,6 +142,16 @@ router.post('/documents/automation', auth, upload.single('templateFile'), async 
       tplId = tpl._id;
       templatePath = tpl.path;
       placeholders = tpl.placeholders;
+    }
+    // Accept placeholders from body (for sample templates without uploaded file)
+    if (!req.file && !tplId && templatePlaceholders) {
+      try {
+        placeholders = Array.isArray(templatePlaceholders)
+          ? templatePlaceholders
+          : JSON.parse(templatePlaceholders);
+      } catch (err) {
+        placeholders = [];
+      }
     }
     const created = await DocumentAutomation.create({
       name,
