@@ -13,7 +13,7 @@ const documentSchema = new mongoose.Schema({
   },
   filePath: {
     type: String,
-    required: true
+    required: false // Made optional for AI-generated text documents
   },
   s3Bucket: {
     type: String,
@@ -43,7 +43,7 @@ const documentSchema = new mongoose.Schema({
   },
   documentType: {
     type: String,
-    enum: ['pleading', 'motion', 'brief', 'evidence', 'correspondence', 'contract', 'other'],
+    enum: ['pleading', 'motion', 'brief', 'evidence', 'correspondence', 'contract', 'other', 'ai_generated', 'engagement_letter', 'nda', 'demand_letter', 'memo', 'custom'],
     default: 'other'
   },
   description: {
@@ -71,6 +71,22 @@ const documentSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
+  },
+  // AI Generation fields
+  aiGenerated: {
+    type: Boolean,
+    default: false
+  },
+  sourceTranscript: {
+    type: String
+  },
+  textContent: {
+    type: String // For storing AI-generated text documents
+  },
+  client: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Client',
+    required: false
   },
   // AI Integration fields
   gptQueries: {

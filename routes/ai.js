@@ -90,7 +90,11 @@ router.post('/summarize-pdf', auth, upload.single('file'), async (req, res) => {
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: "You are a concise summarizer." },
-        { role: "user", content: `Combine these summaries into one cohesive summary:\n\n${partialSummaries.join("\n\n")}` }
+        { role: "user", content: `Combine these summaries into one cohesive summary:
+
+${partialSummaries.join("
+
+")}` }
       ],
       temperature: 0.3
     });
@@ -645,6 +649,103 @@ Format your response as JSON with these exact keys:
   } catch (error) {
     console.error('Contract Analysis error:', error);
     res.status(500).json({ error: 'Failed to analyze contract', details: error.message });
+  }
+});
+
+// POST /generate-legal-document - Generate legal document from voice transcript
+router.post('/generate-legal-document', auth, async (req, res) => {
+  try {
+    const { transcript, documentType, title, caseId, clientId } = req.body;
+    
+    if (!transcript || !transcript.trim()) {
+      return res.status(400).json({ error: 'Transcript is required' });
+    }
+
+    console.log('Generating legal document:', { documentType, title, transcriptLength: transcript.length });
+
+    // Build prompt based on document type
+    const documentTypePrompts = {
+      engagement_letter: 'Create a professional engagement letter for legal services.',
+      nda: 'Draft a comprehensive Non-Disclosure Agreement (NDA).',
+      demand_letter: 'Write a formal demand letter.',
+      contract: 'Generate a legal contract.',
+      memo: 'Prepare a legal memorandum.',
+      custom: 'Create a legal document'
+    };
+
+    const basePrompt = documentTypePrompts[documentType] || documentTypePrompts.custom;
+    
+    const systemPrompt = `You are an expert legal document drafter. Generate professional, legally sound documents with proper formatting and structure. Include all necessary clauses, sections, and legal language appropriate for the document type.`;
+    
+    const userPrompt = `${basePrompt}
+
+Based on the following transcript/notes, create a complete legal document:
+
+"${transcript}"
+
+Document Title: ${title || 'Legal Document'}
+
+Provide a fully formatted document with:
+- Proper heading and title
+- Introduction/preamble
+- Numbered sections and subsections
+- All necessary legal clauses
+- Signature blocks
+- Date placeholders
+
+Format the document professionally and ensure it's ready for review and use.`;
+
+    // Call OpenAI to generate the document
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 4000
+    });
+
+    const generatedContent = response.choices[0].message.content.trim();
+
+    // Save the document to database
+    const Document = require('../models/Document');
+    
+    const document = new Document({
+      originalName: `${title || 'Legal Document'}.txt`,
+      filename: `ai-generated-${Date.now()}.txt`,
+      filePath: '', // Will be set if we upload to S3
+      fileSize: Buffer.byteLength(generatedContent, 'utf8'),
+      mimeType: 'text/plain',
+      uploadedBy: req.user.userId,
+      documentType: documentType || 'ai_generated',
+      description: `AI-generated legal document from voice transcript`,
+      tags: ['ai-generated', 'voice-to-text', documentType],
+      aiGenerated: true,
+      sourceTranscript: transcript,
+      case: caseId || undefined,
+      client: clientId || undefined,
+      // Store content directly in DB for text documents
+      textContent: generatedContent,
+      processingStatus: 'completed'
+    });
+
+    await document.save();
+
+    console.log('Legal document generated and saved:', document._id);
+
+    res.status(201).json({
+      message: 'Legal document generated successfully',
+      documentId: document._id.toString(),
+      title: title || 'Legal Document',
+      content: generatedContent,
+      documentType,
+      createdAt: document.createdAt
+    });
+
+  } catch (error) {
+    console.error('Generate legal document error:', error);
+    res.status(500).json({ error: 'Failed to generate legal document', details: error.message });
   }
 });
 

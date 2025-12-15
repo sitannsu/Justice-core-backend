@@ -19,7 +19,7 @@ router.get('/stats', auth, async (req, res) => {
       caseStage: { $nin: ['Closed', 'Archived'] },
       dateOpened: { $lt: lastMonth }
     });
-    const activeCasesChange = activeCasesLastMonth > 0 
+    const activeCasesChange = activeCasesLastMonth > 0
       ? Math.round(((activeCasesNow - activeCasesLastMonth) / activeCasesLastMonth) * 100)
       : 0;
 
@@ -121,8 +121,8 @@ router.get('/today-schedule', auth, async (req, res) => {
         $lt: tomorrow
       }
     })
-    .sort({ startTime: 1 })
-    .populate('caseId', 'caseName');
+      .sort({ startTime: 1 })
+      .populate('caseId', 'caseName');
 
     console.log('Found events:', events.length);
     events.forEach(event => {
@@ -202,6 +202,91 @@ router.get('/task-progress', auth, async (req, res) => {
       overdue
     });
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get actionable items
+router.get('/actionable-items', auth, async (req, res) => {
+  try {
+    const actionableItems = [];
+    const userId = req.user.userId;
+    const now = new Date();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    // 1. Deadlines (from Tasks or Cases)
+    // Find tasks due today or overdue
+    const deadlines = await Task.find({
+      assignedTo: userId,
+      dueDate: { $lte: todayEnd },
+      status: { $ne: 'Completed' }
+    }).populate('case').limit(3);
+
+    deadlines.forEach(task => {
+      actionableItems.push({
+        id: `deadline-${task._id}`,
+        type: 'deadline',
+        title: `Deadline: ${task.title}`,
+        subtitle: task.case ? task.case.caseName : 'General Task',
+        meta: 'Due Today',
+        isUrgent: true,
+        actionLabel: 'View Task',
+        secondaryActionLabel: 'Snooze',
+        route: 'TaskDetails',
+        routeParams: { taskId: task._id }
+      });
+    });
+
+    // 2. Mock Messages (since we don't have Message model yet in imports)
+    // In a real app, we would query Message model
+    actionableItems.push({
+      id: 'msg-mock-1',
+      type: 'message',
+      title: 'New Message from Opposing Counsel re: ',
+      subtitle: 'Acme Corp Case',
+      meta: 'Oct 28, 9:42 AM',
+      actionLabel: 'Reply',
+      route: 'Chat', // Assuming Chat screen exists or will exist
+      routeParams: { chatId: 'mock-chat-1' }
+    });
+
+    // 3. Mock Signatures (or derived from tasks with 'sign' in title)
+    // We can look for tasks with 'sign' in title
+    const signatureTasks = await Task.find({
+      assignedTo: userId,
+      title: { $regex: /sign/i },
+      status: { $ne: 'Completed' }
+    }).limit(1);
+
+    if (signatureTasks.length > 0) {
+      const task = signatureTasks[0];
+      actionableItems.push({
+        id: `sign-${task._id}`,
+        type: 'signature',
+        title: 'Document Signature Requested: ',
+        subtitle: task.title,
+        meta: 'Sent by System',
+        actionLabel: 'Review & Sign',
+        route: 'AddDocument',
+        routeParams: { mode: 'sign' }
+      });
+    } else {
+      // Fallback mock if no sign tasks found, to ensure UI isn't empty during demo
+      actionableItems.push({
+        id: 'sign-mock-1',
+        type: 'signature',
+        title: 'Document Signature Requested: ',
+        subtitle: 'Client Engagement Letter',
+        meta: 'Sent by Sarah Jenkins',
+        actionLabel: 'Review & Sign',
+        route: 'AddDocument',
+        routeParams: { mode: 'sign' }
+      });
+    }
+
+    res.json(actionableItems);
+  } catch (error) {
+    console.error('Actionable items error:', error);
     res.status(500).json({ message: error.message });
   }
 });
