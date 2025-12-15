@@ -649,8 +649,8 @@ Format your response as JSON with these exact keys:
   }
 });
 
-// POST /generate-legal-document - Generate legal document from voice transcript
-router.post('/generate-legal-document', auth, async (req, res) => {
+// POST /ai/generate-legal-document - Generate legal document from voice transcript
+router.post('/ai/generate-legal-document', auth, async (req, res) => {
   console.log('=== Generate Legal Document Endpoint Hit ===');
   console.log('Request body:', req.body);
   
