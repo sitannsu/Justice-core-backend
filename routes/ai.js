@@ -86,15 +86,12 @@ router.post('/summarize-pdf', auth, upload.single('file'), async (req, res) => {
     }
 
     // Step 4: Merge partial summaries into a final summary
+    const combinedText = partialSummaries.join("\n\n");
     const finalResponse = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: "You are a concise summarizer." },
-        { role: "user", content: `Combine these summaries into one cohesive summary:
-
-${partialSummaries.join("
-
-")}` }
+        { role: "user", content: "Combine these summaries into one cohesive summary:\n\n" + combinedText }
       ],
       temperature: 0.3
     });
