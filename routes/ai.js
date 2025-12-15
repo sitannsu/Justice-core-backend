@@ -651,10 +651,14 @@ Format your response as JSON with these exact keys:
 
 // POST /generate-legal-document - Generate legal document from voice transcript
 router.post('/generate-legal-document', auth, async (req, res) => {
+  console.log('=== Generate Legal Document Endpoint Hit ===');
+  console.log('Request body:', req.body);
+  
   try {
     const { transcript, documentType, title, caseId, clientId } = req.body;
     
     if (!transcript || !transcript.trim()) {
+      console.log('ERROR: No transcript provided');
       return res.status(400).json({ error: 'Transcript is required' });
     }
 
