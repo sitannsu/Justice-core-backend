@@ -722,6 +722,7 @@ Format the document professionally and ensure it's ready for review and use.`;
       documentType: documentType || 'ai_generated',
       description: `AI-generated legal document from voice transcript`,
       tags: ['ai-generated', 'voice-to-text', documentType],
+      status: 'temp', // AI-generated documents start as temp until assigned to a case
       aiGenerated: true,
       sourceTranscript: transcript,
       case: caseId || undefined,
