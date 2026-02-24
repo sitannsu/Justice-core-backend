@@ -27,26 +27,9 @@ if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
   console.log(`🌍 Region: ${s3Config.region}`);
 }
 
-// Function to detect bucket region
+// Function to detect bucket region bypassed to avoid causing misleading logs
 const detectBucketRegion = async () => {
-  try {
-    const { GetBucketLocationCommand } = require('@aws-sdk/client-s3');
-    const command = new GetBucketLocationCommand({ Bucket: s3Config.bucket });
-    const response = await s3Client.send(command);
-    const actualRegion = response.LocationConstraint || 'us-east-1';
-
-    if (actualRegion !== s3Config.region) {
-      console.log(`⚠️  Warning: Bucket is in region '${actualRegion}' but configured for '${s3Config.region}'`);
-      console.log(`💡 Consider updating AWS_REGION in your .env file to '${actualRegion}'`);
-    } else {
-      console.log(`✅ Bucket region matches configuration: ${actualRegion}`);
-    }
-
-    return actualRegion;
-  } catch (error) {
-    console.error('❌ Could not detect bucket region:', error.message);
-    return s3Config.region;
-  }
+  return process.env.AWS_REGION || 'eu-north-1';
 };
 
 module.exports = { s3Client, s3Config, detectBucketRegion };
