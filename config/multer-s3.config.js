@@ -13,9 +13,26 @@ console.log(`  - S3 Client configured: ${s3Client ? 'Yes' : 'No'}`);
 // Detect actual bucket region
 detectBucketRegion().then(actualRegion => {
   if (actualRegion !== s3Config.region) {
-    console.log(`🔄 Updating S3 client to use actual bucket region: ${actualRegion}`);
-    // Update S3 client with correct region
-    s3Client.config.region = actualRegion;
+    console.log(`🔄 S3 bucket region is actually ${actualRegion}, but client is configured for ${s3Config.region}.`);
+    console.log(`⚠️ Please update your AWS_REGION environment variable to avoid upload errors.`);
+  }
+});
+
+const fs = require('fs');
+
+// Configure local disk storage as a fallback
+const localStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = 'uploads/documents';
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `doc-${uniqueSuffix}${ext}`);
   }
 });
 
@@ -54,7 +71,7 @@ const fileFilter = (req, file, cb) => {
     'image/gif',
     'image/webp'
   ];
-  
+
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -62,45 +79,39 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Create multer instance with S3 storage
+// Initial storage selection - will be updated if S3 test fails
+let currentStorage = (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+  ? s3Storage
+  : localStorage;
+
+// Create multer instance
 const upload = multer({
-  storage: s3Storage,
+  storage: currentStorage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: fileFilter
 });
 
-// Test S3 connection
+// Test S3 connection and fallback if needed
 const testS3Connection = async () => {
+  if (!process.env.AWS_ACCESS_KEY_ID) {
+    console.log('ℹ️  S3 not configured, using local storage');
+    upload.storage = localStorage;
+    return;
+  }
+
   try {
-    // First test basic S3 access
     const { ListBucketsCommand } = require('@aws-sdk/client-s3');
-    const command = new ListBucketsCommand({});
-    await s3Client.send(command);
+    await s3Client.send(new ListBucketsCommand({}));
     console.log('✅ S3 connection test successful');
-    
-    // Then test specific bucket access
-    const { HeadBucketCommand } = require('@aws-sdk/client-s3');
-    const bucketCommand = new HeadBucketCommand({ Bucket: s3Config.bucket });
-    await s3Client.send(bucketCommand);
-    console.log(`✅ Bucket '${s3Config.bucket}' access test successful`);
-    
   } catch (error) {
-    console.error('❌ S3 connection test failed:', error.message);
-    
-    if (error.name === 'UnauthorizedOperation') {
-      console.error('💡 Check your AWS credentials and permissions');
-    } else if (error.name === 'PermanentRedirect') {
-      console.error('💡 Region mismatch detected. The bucket is in a different region.');
-      console.error('💡 Try updating AWS_REGION in your .env file');
-    } else if (error.name === 'NoSuchBucket') {
-      console.error(`💡 Bucket '${s3Config.bucket}' does not exist`);
-    }
+    console.error('❌ S3 connection test failed, falling back to local storage:', error.message);
+    upload.storage = localStorage;
   }
 };
 
 // Test connection on startup
 testS3Connection();
 
-module.exports = { upload, s3Client, s3Config };
+module.exports = { upload, s3Client, s3Config, localStorage };
