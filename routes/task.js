@@ -64,6 +64,10 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
 
+    if (req.body.caseId) {
+      req.body.case = req.body.caseId;
+      delete req.body.caseId;
+    }
     Object.assign(task, req.body);
     const updatedTask = await task.save();
     const populatedTask = await Task.findById(updatedTask._id)
@@ -105,6 +109,34 @@ router.delete('/:id', auth, async (req, res) => {
     res.json({ message: 'Task deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Add a comment to a task
+router.post('/:id/comments', auth, async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const newComment = {
+      text: req.body.text,
+      author: req.body.author,
+      time: new Date()
+    };
+
+    task.comments.push(newComment);
+    const updatedTask = await task.save();
+
+    // Return just the added comment or the whole populated task based on typical usage
+    const populatedTask = await Task.findById(updatedTask._id)
+      .populate('case', 'number title')
+      .populate('assignedTo', 'firstName lastName');
+
+    res.status(201).json(populatedTask);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 });
 

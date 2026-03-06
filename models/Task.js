@@ -70,6 +70,13 @@ const taskSchema = new mongoose.Schema({
       }
     }
   ],
+  comments: [
+    {
+      text: { type: String, required: true },
+      author: { type: String, required: true },
+      time: { type: Date, default: Date.now }
+    }
+  ],
   createdAt: {
     type: Date,
     default: Date.now
@@ -80,7 +87,7 @@ const taskSchema = new mongoose.Schema({
   }
 });
 
-taskSchema.pre('save', function(next) {
+taskSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
 });
