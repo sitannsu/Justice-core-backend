@@ -1,5 +1,7 @@
+version: '3.8'
+
 services:
-  # The Backend Service
+  # --- Justice Core Backend Service ---
   justice-core-backend:
     build: 
       context: .
@@ -8,17 +10,17 @@ services:
     ports:
       - "3006:3006"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - PORT=3006
-      # To use local MongoDB (container), keep the line below:
-      - MONGODB_URI=mongodb://mongodb:27017/docket-digital
-      # To use remote MongoDB (from .env), comment out the line above.
-    env_file:
-      - .env
-
+      - MONGODB_URI=mongodb://mongodb:27017/JusticeCore
+      - JWT_SECRET=justice-core-secret-key-2025
+      # Add other essential env variables if needed
     depends_on:
-      - mongodb
-    restart: always
+      mongodb:
+        condition: service_healthy
+    networks:
+      - justice-core-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
       interval: 30s
@@ -26,15 +28,45 @@ services:
       retries: 3
       start_period: 40s
 
-  # MongoDB Service for local testing
+  # --- MongoDB Database Service ---
   mongodb:
     image: mongo:6.0
     container_name: justice-core-mongodb
     ports:
-      - "27017:27017"
+      - "27017:27017" # Exposed for local tool access (like Compass)
     volumes:
       - mongo-data:/data/db
-    restart: always
+    networks:
+      - justice-core-network
+    restart: unless-stopped
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- MongoDB Express (UI for managing MongoDB) ---
+  mongo-express:
+    image: mongo-express
+    container_name: justice-core-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=pass
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - justice-core-network
 
 volumes:
   mongo-data:
+    driver: local
+
+networks:
+  justice-core-network:
+    driver: bridge

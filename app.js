@@ -89,6 +89,21 @@ const iprRoutes = require('./routes/ipr');
 app.use('/api/ipr', iprRoutes);
 app.use('/api/email', emailRoutes);
 
+const tokenUsageRoutes = require('./routes/tokenUsage');
+app.use('/api/token-usage', tokenUsageRoutes);
+
+const signatureRoutes = require('./routes/signatures');
+app.use('/api/signatures', signatureRoutes);
+
+const aiContractsRoutes = require('./routes/aiContracts');
+app.use('/api/ai-contracts', aiContractsRoutes);
+
+const hrManagementRoutes = require('./routes/hr-management');
+app.use('/api/hr-management', hrManagementRoutes);
+
+const automationRoutes = require('./routes/automation');
+app.use('/api/automation', automationRoutes);
+
 
 // Basic health check
 app.get('/health', (req, res) => {
