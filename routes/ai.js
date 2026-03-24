@@ -5,6 +5,7 @@ const pdf = require('pdf-parse');
 const fs = require('fs');
 const auth = require('../middleware/auth');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const trackTokenUsage = require('../utils/trackTokenUsage');
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
@@ -43,6 +44,7 @@ router.post('/ai-file-question', auth, upload.single('file'), async (req, res) =
     });
 
     console.log('OpenAI response received');
+    await trackTokenUsage(response, { userId: req.user.userId, endpoint: '/ai-file-question', feature: 'document_question' });
     const answer = response.choices[0].message.content.trim();
     res.json({ answer });
   } catch (err) {
@@ -82,6 +84,7 @@ router.post('/summarize-pdf', auth, upload.single('file'), async (req, res) => {
         ],
         temperature: 0.3
       });
+      await trackTokenUsage(response, { userId: req.user.userId, endpoint: '/ai-summarize-pdf', feature: 'document_summary' });
       partialSummaries.push(response.choices[0].message.content.trim());
     }
 
@@ -95,6 +98,7 @@ router.post('/summarize-pdf', auth, upload.single('file'), async (req, res) => {
       ],
       temperature: 0.3
     });
+    await trackTokenUsage(finalResponse, { userId: req.user.userId, endpoint: '/ai-summarize-pdf', feature: 'document_summary' });
     const finalSummary = finalResponse.choices[0].message.content.trim();
     res.json({ summary: finalSummary });
   } catch (err) {
@@ -221,6 +225,7 @@ router.post('/ai-document-question', auth, async (req, res) => {
     });
 
     console.log('OpenAI response received for document question');
+    await trackTokenUsage(response, { userId: req.user.userId, endpoint: '/ai-document-question', feature: 'document_question' });
     const answer = response.choices[0].message.content.trim();
     
     // Update document's GPT query count
@@ -355,7 +360,20 @@ router.post('/contract-analysis', auth, async (req, res) => {
           }
         } catch (s3Error) {
           console.error('S3 download error:', s3Error);
-          throw new Error(`Failed to download from S3: ${s3Error.message}`);
+          // Fall back to document metadata instead of failing
+          console.log('Falling back to document metadata for analysis...');
+          content = `[S3 Download Failed - Using Document Metadata]
+          
+Document Title: ${document.originalName || document.filename}
+File Size: ${document.fileSize} bytes
+MIME Type: ${document.mimeType}
+Document Type: ${document.documentType || 'unknown'}
+Description: ${document.description || 'No description available'}
+Tags: ${(document.tags || []).join(', ') || 'None'}
+${document.textContent ? '\nText Content:\n' + document.textContent : ''}
+${document.ocrText ? '\nOCR Text:\n' + document.ocrText : ''}
+
+Note: The original document could not be downloaded from storage. This analysis is based on available metadata only.`;
         }
       } else if (document.filePath && !document.filePath.includes('s3.amazonaws.com')) {
         console.log('Processing local file...');
@@ -606,6 +624,7 @@ Format your response as JSON with these exact keys:
       temperature: 0.3
     });
 
+    await trackTokenUsage(response, { userId: req.user.userId, endpoint: '/contract-analysis', feature: 'contract_analysis' });
     const analysisResult = response.choices[0].message.content.trim();
     
     // Try to parse JSON response
@@ -707,6 +726,7 @@ Format the document professionally and ensure it's ready for review and use.`;
       max_tokens: 4000
     });
 
+    await trackTokenUsage(response, { userId: req.user.userId, endpoint: '/ai/generate-legal-document', feature: 'legal_document_generation' });
     const generatedContent = response.choices[0].message.content.trim();
 
     // Save the document to database

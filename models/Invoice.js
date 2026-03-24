@@ -7,8 +7,7 @@ const invoiceSchema = new mongoose.Schema({
   },
   case: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Case',
-    required: true
+    ref: 'Case'
   },
   client: {
     type: mongoose.Schema.Types.ObjectId,
@@ -67,6 +66,12 @@ const invoiceSchema = new mongoose.Schema({
     enum: ['Draft', 'Sent', 'Paid', 'Outstanding', 'Overdue'],
     default: 'Draft'
   },
+  theme: {
+    type: String,
+    enum: ['professional', 'creative'],
+    default: 'professional'
+  },
+  description: String,
   notes: String,
   paymentTerms: String
 }, {
@@ -74,7 +79,7 @@ const invoiceSchema = new mongoose.Schema({
 });
 
 // Generate invoice number before saving
-invoiceSchema.pre('save', async function(next) {
+invoiceSchema.pre('save', async function (next) {
   if (!this.invoiceNumber) {
     const currentYear = new Date().getFullYear();
     const count = await this.constructor.countDocuments({

@@ -11,6 +11,7 @@ const Case = require('../models/Case');
 const Client = require('../models/Client');
 const DocumentRun = require('../models/DocumentRun');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const trackTokenUsage = require('../utils/trackTokenUsage');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -80,6 +81,7 @@ Format strictly as: {"keywords":["..."]}`;
         ],
         temperature: 0.2
       });
+      await trackTokenUsage(ai, { userId: req.user.userId, endpoint: '/document-automation/search', feature: 'document_automation' });
       const text = ai.choices?.[0]?.message?.content || '';
       const json = JSON.parse(text);
       if (Array.isArray(json.keywords)) {

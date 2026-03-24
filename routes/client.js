@@ -14,7 +14,7 @@ router.post('/', auth, async (req, res) => {
     // Check if client already exists
     const existingClient = await Client.findOne({ email });
     if (existingClient) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Client with this email already exists',
         existingClient: {
           _id: existingClient._id,
@@ -150,7 +150,7 @@ router.put('/profile', clientAuth, async (req, res) => {
   try {
     const { company, contactPerson, email, accountType } = req.body;
     const client = await Client.findById(req.user.clientId);
-    
+
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });
     }
@@ -266,17 +266,17 @@ router.get('/cases/:caseId', clientAuth, async (req, res) => {
       description: caseDoc.description || '',
       assignedLawyer: caseDoc.lawyer
         ? {
-            name: `${caseDoc.lawyer.firstName || ''} ${caseDoc.lawyer.lastName || ''}`.trim() || 'Your Lawyer',
-            email: caseDoc.lawyer.email || '',
-            phone: caseDoc.lawyer.phoneNumber || ''
-          }
+          name: `${caseDoc.lawyer.firstName || ''} ${caseDoc.lawyer.lastName || ''}`.trim() || 'Your Lawyer',
+          email: caseDoc.lawyer.email || '',
+          phone: caseDoc.lawyer.phoneNumber || ''
+        }
         : null,
       client: clientInCase
         ? {
-            name: clientInCase.contactPerson || clientInCase.company || '',
-            email: clientInCase.email || '',
-            phone: clientInCase.phone || ''
-          }
+          name: clientInCase.contactPerson || clientInCase.company || '',
+          email: clientInCase.email || '',
+          phone: clientInCase.phone || ''
+        }
         : null,
       createdAt: caseDoc.createdAt,
       updatedAt: caseDoc.updatedAt,
@@ -298,8 +298,8 @@ router.get('/cases/:caseId', clientAuth, async (req, res) => {
 router.get('/lawyer', clientAuth, async (req, res) => {
   try {
     // Find a case that belongs to this client to get the lawyer info
-    const caseWithLawyer = await Case.findOne({ 
-      clients: req.user.clientId 
+    const caseWithLawyer = await Case.findOne({
+      clients: req.user.clientId
     }).populate('lawyer', 'firstName lastName email firmName phoneNumber');
 
     if (!caseWithLawyer || !caseWithLawyer.lawyer) {
@@ -324,7 +324,7 @@ router.get('/lawyer', clientAuth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     console.log('Getting clients for lawyer:', req.user.userId);
-    const clients = await Client.find({})
+    const clients = await Client.find({ lawyer: req.user.userId })
       .select('-password')
       .sort({ createdAt: -1 });
 
@@ -332,7 +332,7 @@ router.get('/', auth, async (req, res) => {
 
     // Get case counts and total values for each client
     const clientsWithStats = await Promise.all(clients.map(async (client) => {
-      const cases = await Case.find({ 
+      const cases = await Case.find({
         clients: client._id,
         status: { $ne: 'closed' }
       });
@@ -366,5 +366,61 @@ router.get('/', auth, async (req, res) => {
 });
 
 
+// Get a specific client
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const client = await Client.findOne({
+      _id: req.params.id,
+      lawyer: req.user.userId
+    }).select('-password');
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    // Check if this client belongs to the lawyer (optional but recommended)
+    // if (client.lawyer.toString() !== req.user.userId) { ... }
+
+    const cases = await Case.find({
+      clients: client._id,
+      status: { $ne: 'closed' }
+    });
+
+    const totalValue = cases.reduce((sum, c) => sum + (c.caseValue || 0), 0);
+
+    res.json({
+      ...client.toObject(),
+      casesCount: cases.length,
+      totalValue: totalValue,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update a client
+router.put('/:id', auth, async (req, res) => {
+  try {
+    const { company, contactPerson, email, phone, address, accountType, status, notes } = req.body;
+    const client = await Client.findById(req.params.id);
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    if (company !== undefined) client.company = company;
+    if (contactPerson !== undefined) client.contactPerson = contactPerson;
+    if (email !== undefined) client.email = email;
+    if (phone !== undefined) client.phone = phone;
+    if (address !== undefined) client.address = address;
+    if (accountType !== undefined) client.accountType = accountType;
+    if (status !== undefined) client.status = status;
+    if (notes !== undefined) client.notes = notes;
+
+    await client.save();
+    res.json(client);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 module.exports = router;

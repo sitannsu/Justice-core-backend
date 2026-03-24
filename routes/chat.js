@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Department = require('../models/Department');
 const mongoose = require('mongoose');
 const OpenAI = require('openai');
+const trackTokenUsage = require('../utils/trackTokenUsage');
 
 // Conversation types - dynamic by org setup
 router.get('/types', auth, async (req, res) => {
@@ -143,6 +144,7 @@ router.post('/ai', auth, async (req, res) => {
       temperature: 0.7,
     });
 
+    await trackTokenUsage(completion, { userId: req.user.userId, endpoint: '/chat/ai', feature: 'chat' });
     const aiResponse = completion.choices[0]?.message?.content || 'I apologize, but I was unable to generate a response.';
 
     // Create a unique conversation ID for AI chats

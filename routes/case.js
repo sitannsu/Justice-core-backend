@@ -12,7 +12,7 @@ router.post('/test', (req, res) => {
   console.log('Test route - Body keys:', Object.keys(req.body));
   console.log('Test route - Headers:', req.headers);
   console.log('Test route - Content-Type:', req.headers['content-type']);
-  res.json({ 
+  res.json({
     message: 'Test route working',
     body: req.body,
     bodyType: typeof req.body,
@@ -29,7 +29,7 @@ router.post('/', authMiddleware, async (req, res) => {
     console.log('Request body keys:', Object.keys(req.body));
     console.log('Request headers:', req.headers);
     console.log('Content-Type header:', req.headers['content-type']);
-    console.log('User ID from auth:', req.user.id);
+    console.log('User ID from auth:', req.user.userId || req.user.id);
 
     // Try to manually parse the body if it's a string
     let bodyData = req.body;
@@ -48,7 +48,7 @@ router.post('/', authMiddleware, async (req, res) => {
       console.error('Request body is empty or invalid');
       return res.status(400).json({ message: 'Request body is empty or invalid' });
     }
-    
+
     const {
       caseName,
       caseNumber,
@@ -127,7 +127,7 @@ router.post('/', authMiddleware, async (req, res) => {
       staff: staff || [],
       assignedAttorney: assignedAttorney || undefined,
       customFields: customFields || {},
-      lawyer: req.user.id
+      lawyer: req.user.userId || req.user.id
     };
 
     console.log('Case data to be saved:', caseData);
@@ -150,23 +150,23 @@ router.post('/', authMiddleware, async (req, res) => {
     res.status(201).json(populatedCase);
   } catch (error) {
     console.error('Error creating case:', error);
-    
+
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Case number must be unique' });
     }
-    
+
     // Handle validation errors specifically
     if (error.name === 'ValidationError') {
       console.error('Validation error details:', error.errors);
-      const validationErrors = Object.keys(error.errors).map(key => 
+      const validationErrors = Object.keys(error.errors).map(key =>
         `${key}: ${error.errors[key].message}`
       ).join(', ');
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: `Validation failed: ${validationErrors}`,
         details: error.errors
       });
     }
-    
+
     res.status(500).json({ message: error.message });
   }
 });
@@ -174,7 +174,19 @@ router.post('/', authMiddleware, async (req, res) => {
 // Get all cases for a lawyer
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const cases = await Case.find({ lawyer: req.user.id })
+    const userId = req.user.userId || req.user.id;
+    const { status } = req.query;
+
+    const query = { lawyer: userId };
+
+    // Add status filter if provided and not "undefined"
+    if (status && status !== 'undefined' && status !== 'all') {
+      query.caseStage = status;
+    }
+
+    console.log('Fetching cases with query:', query);
+
+    const cases = await Case.find(query)
       .populate('clients', 'contactPerson company email')
       .populate('contacts', 'firstName lastName email')
       .populate('staff', 'firstName lastName email')
@@ -184,6 +196,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
     res.json(cases);
   } catch (error) {
+    console.error('Error fetching cases:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -192,11 +205,11 @@ router.get('/', authMiddleware, async (req, res) => {
 router.get('/client/:clientId', authMiddleware, async (req, res) => {
   try {
     const { clientId } = req.params;
-    
+
     // Find cases where the client is in the clients array
-    const cases = await Case.find({ 
-      lawyer: req.user.id,
-      clients: clientId 
+    const cases = await Case.find({
+      lawyer: req.user.userId || req.user.id,
+      clients: clientId
     })
       .populate('clients', 'firstName lastName email companyName')
       .populate('contacts', 'firstName lastName email')
@@ -215,9 +228,9 @@ router.get('/client/:clientId', authMiddleware, async (req, res) => {
 // Get a specific case
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const caseItem = await Case.findOne({ 
+    const caseItem = await Case.findOne({
       _id: req.params.id,
-      lawyer: req.user.id 
+      lawyer: req.user.userId || req.user.id
     })
       .populate('clients', 'firstName lastName email')
       .populate('contacts', 'firstName lastName email')
@@ -237,9 +250,9 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // Update a case
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const caseItem = await Case.findOne({ 
+    const caseItem = await Case.findOne({
       _id: req.params.id,
-      lawyer: req.user.id 
+      lawyer: req.user.userId || req.user.id
     });
 
     if (!caseItem) {
@@ -270,9 +283,9 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // Delete a case
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const caseItem = await Case.findOneAndDelete({ 
+    const caseItem = await Case.findOneAndDelete({
       _id: req.params.id,
-      lawyer: req.user.id 
+      lawyer: req.user.userId || req.user.id
     });
 
     if (!caseItem) {

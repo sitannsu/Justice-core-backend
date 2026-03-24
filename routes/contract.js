@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const trackTokenUsage = require('../utils/trackTokenUsage');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -25,7 +26,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
@@ -44,9 +45,9 @@ const upload = multer({
 router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20, search, status, practiceArea, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
-    
+
     const query = { uploadedBy: req.user.userId };
-    
+
     // Add search filter
     if (search) {
       query.$or = [
@@ -55,32 +56,32 @@ router.get('/', auth, async (req, res) => {
         { extractedText: { $regex: search, $options: 'i' } }
       ];
     }
-    
+
     // Add status filter
     if (status) {
       query.status = status;
     }
-    
+
     // Add practice area filter
     if (practiceArea) {
       query.practiceArea = practiceArea;
     }
-    
+
     // Build sort object
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-    
+
     const skip = (page - 1) * limit;
-    
+
     const contracts = await Contract.find(query)
       .populate('case', 'caseName caseNumber')
       .populate('client', 'company contactPerson')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
-    
+
     const total = await Contract.countDocuments(query);
-    
+
     res.json({
       contracts,
       pagination: {
@@ -103,16 +104,16 @@ router.get('/:id', auth, async (req, res) => {
       .populate('case', 'caseName caseNumber')
       .populate('client', 'company contactPerson')
       .populate('uploadedBy', 'firstName lastName email');
-    
+
     if (!contract) {
       return res.status(404).json({ message: 'Contract not found' });
     }
-    
+
     // Check if user has access to this contract
     if (contract.uploadedBy._id.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    
+
     res.json(contract);
   } catch (error) {
     console.error('Error fetching contract:', error);
@@ -126,7 +127,7 @@ router.post('/', auth, upload.single('contract'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
-    
+
     const {
       title,
       description,
@@ -138,7 +139,7 @@ router.post('/', auth, upload.single('contract'), async (req, res) => {
       practiceArea,
       tags
     } = req.body;
-    
+
     // Create contract document
     const contract = new Contract({
       title: title || req.file.originalname,
@@ -156,13 +157,13 @@ router.post('/', auth, upload.single('contract'), async (req, res) => {
       practiceArea,
       tags: tags ? tags.split(',').map(tag => tag.trim()) : []
     });
-    
+
     await contract.save();
-    
+
     // Populate references
     await contract.populate('case', 'caseName caseNumber');
     await contract.populate('client', 'company contactPerson');
-    
+
     res.status(201).json(contract);
   } catch (error) {
     console.error('Error uploading contract:', error);
@@ -170,28 +171,122 @@ router.post('/', auth, upload.single('contract'), async (req, res) => {
   }
 });
 
+// POST /api/contracts/draft - Generate a contract draft using AI
+router.post('/draft', auth, async (req, res) => {
+  try {
+    const {
+      title,
+      type,
+      caseId,
+      jurisdiction,
+      businessDomain,
+      partyA,
+      partyB,
+      instructions
+    } = req.body;
+
+    if (!title || !type) {
+      return res.status(400).json({ message: 'Title and type are required' });
+    }
+
+    // Prepare OpenAI prompt
+    const systemPrompt = `You are an expert ${jurisdiction || 'International'} legal drafter specializing in ${businessDomain || 'general'} contracts.
+Create a comprehensive ${type} based on the provided details.
+Ensure the contract is legally sound, professional, and includes standard clauses for this type of agreement.`;
+
+    const userPrompt = `Draft a ${type} with the following details:
+Title: ${title}
+Party A: ${partyA?.name} (${partyA?.type})
+Party B: ${partyB?.name} (${partyB?.type})
+Jurisdiction: ${jurisdiction}
+Domain: ${businessDomain}
+Additional Instructions: ${instructions || 'None'}
+
+Please provide the full text of the contract.`;
+
+    // Call OpenAI API
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.4,
+      max_tokens: 3000
+    });
+
+    await trackTokenUsage(completion, { userId: req.user.userId, endpoint: '/contracts/generate', feature: 'contract_generation' });
+    const generatedText = completion.choices[0].message.content;
+
+    // Save generated text to a file
+    const fileName = `draft-${Date.now()}.txt`;
+    const uploadDir = 'uploads/contracts/';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const filePath = path.join(uploadDir, fileName);
+    fs.writeFileSync(filePath, generatedText);
+    const stats = fs.statSync(filePath);
+
+    // Create contract document
+    const contract = new Contract({
+      title: title,
+      type: type, // Save specific type like 'NDA'
+      description: `AI Generated ${type} for ${partyA?.name} and ${partyB?.name}`,
+      case: caseId || null,
+      uploadedBy: req.user.userId,
+      filePath: filePath,
+      fileSize: stats.size,
+      mimeType: 'text/plain',
+      originalName: fileName,
+      status: 'draft',
+      documentType: 'contract',
+      ocrText: generatedText, // Since it's text, we can populate this
+      extractedText: generatedText,
+      parties: [
+        { name: partyA?.name, type: 'other', role: 'Party A' },
+        { name: partyB?.name, type: 'other', role: 'Party B' }
+      ]
+    });
+
+    await contract.save();
+
+    // Populate references
+    if (caseId) {
+      await contract.populate('case', 'caseName caseNumber');
+    }
+    await contract.populate('client', 'company contactPerson');
+
+    res.status(201).json(contract);
+
+  } catch (error) {
+    console.error('Error generating contract draft:', error);
+    res.status(500).json({ message: 'Failed to generate contract draft', error: error.message });
+  }
+});
+
 // POST /api/contracts/:id/analyze - Analyze contract with OpenAI
 router.post('/:id/analyze', auth, async (req, res) => {
   try {
     const contract = await Contract.findById(req.params.id);
-    
+
     if (!contract) {
       return res.status(404).json({ message: 'Contract not found' });
     }
-    
+
     // Check if user has access to this contract
     if (contract.uploadedBy.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    
+
     // Update status to analyzing
     contract.aiAnalysisStatus = 'analyzing';
     await contract.save();
-    
+
     try {
       // Extract text content from file
       let textContent = '';
-      
+
       if (contract.extractedText) {
         textContent = contract.extractedText;
       } else if (contract.ocrText) {
@@ -200,7 +295,7 @@ router.post('/:id/analyze', auth, async (req, res) => {
         // For now, we'll use a placeholder. In production, you'd implement OCR here
         textContent = `[Document content for ${contract.originalName} - OCR processing required]`;
       }
-      
+
       // Prepare OpenAI prompt for contract analysis
       const systemPrompt = `You are an expert contract lawyer specializing in Indian law. Analyze the following contract for:
 
@@ -254,8 +349,9 @@ Please provide a comprehensive legal analysis following the specified format.`;
         max_tokens: 2000
       });
 
+      await trackTokenUsage(completion, { userId: req.user.userId, endpoint: '/contracts/:id/analyze', feature: 'contract_analysis' });
       const analysisContent = completion.choices[0].message.content;
-      
+
       // Parse the JSON response (strip code fences if present)
       let analysis;
       try {
@@ -312,28 +408,28 @@ Please provide a comprehensive legal analysis following the specified format.`;
       contract.aiAnalysisStatus = 'analyzed';
       contract.lastAnalyzed = new Date();
       contract.analysisVersion = '1.0';
-      
+
       await contract.save();
-      
+
       res.json({
         message: 'Contract analysis completed successfully',
         analysis: analysis,
         contract: contract
       });
-      
+
     } catch (analysisError) {
       console.error('Error during contract analysis:', analysisError);
-      
+
       // Update status to failed
       contract.aiAnalysisStatus = 'failed';
       await contract.save();
-      
-      res.status(500).json({ 
+
+      res.status(500).json({
         message: 'Contract analysis failed',
-        error: analysisError.message 
+        error: analysisError.message
       });
     }
-    
+
   } catch (error) {
     console.error('Error in contract analysis endpoint:', error);
     res.status(500).json({ message: 'Failed to analyze contract' });
@@ -344,16 +440,16 @@ Please provide a comprehensive legal analysis following the specified format.`;
 router.post('/:id/compare', auth, async (req, res) => {
   try {
     const contract = await Contract.findById(req.params.id);
-    
+
     if (!contract) {
       return res.status(404).json({ message: 'Contract not found' });
     }
-    
+
     // Check if user has access to this contract
     if (contract.uploadedBy.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    
+
     // Prepare OpenAI prompt for comparison
     const systemPrompt = `You are an expert contract lawyer. Compare the following contract against standard legal templates and identify:
 
@@ -391,8 +487,9 @@ Provide a detailed comparison analysis.`;
       max_tokens: 1500
     });
 
+    await trackTokenUsage(completion, { userId: req.user.userId, endpoint: '/contracts/compare', feature: 'contract_comparison' });
     const comparisonContent = completion.choices[0].message.content;
-    
+
     let comparison;
     try {
       comparison = JSON.parse(comparisonContent);
@@ -406,12 +503,12 @@ Provide a detailed comparison analysis.`;
         overallAssessment: 'Unable to assess'
       };
     }
-    
+
     res.json({
       message: 'Contract comparison completed',
       comparison: comparison
     });
-    
+
   } catch (error) {
     console.error('Error in contract comparison:', error);
     res.status(500).json({ message: 'Failed to compare contract' });
@@ -422,30 +519,30 @@ Provide a detailed comparison analysis.`;
 router.put('/:id', auth, async (req, res) => {
   try {
     const contract = await Contract.findById(req.params.id);
-    
+
     if (!contract) {
       return res.status(404).json({ message: 'Contract not found' });
     }
-    
+
     // Check if user has access to this contract
     if (contract.uploadedBy.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    
+
     const updates = req.body;
-    
+
     // Remove fields that shouldn't be updated
     delete updates._id;
     delete updates.uploadedBy;
     delete updates.createdAt;
     delete updates.updatedAt;
-    
+
     Object.assign(contract, updates);
     await contract.save();
-    
+
     await contract.populate('case', 'caseName caseNumber');
     await contract.populate('client', 'company contactPerson');
-    
+
     res.json(contract);
   } catch (error) {
     console.error('Error updating contract:', error);
@@ -457,23 +554,23 @@ router.put('/:id', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   try {
     const contract = await Contract.findById(req.params.id);
-    
+
     if (!contract) {
       return res.status(404).json({ message: 'Contract not found' });
     }
-    
+
     // Check if user has access to this contract
     if (contract.uploadedBy.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    
+
     // Delete the file
     if (contract.filePath && fs.existsSync(contract.filePath)) {
       fs.unlinkSync(contract.filePath);
     }
-    
+
     await Contract.findByIdAndDelete(req.params.id);
-    
+
     res.json({ message: 'Contract deleted successfully' });
   } catch (error) {
     console.error('Error deleting contract:', error);
@@ -503,7 +600,7 @@ router.get('/stats/summary', auth, async (req, res) => {
         }
       }
     ]);
-    
+
     const practiceAreaStats = await Contract.aggregate([
       { $match: { uploadedBy: req.user.userId } },
       {
@@ -515,7 +612,7 @@ router.get('/stats/summary', auth, async (req, res) => {
       { $sort: { count: -1 } },
       { $limit: 5 }
     ]);
-    
+
     res.json({
       summary: stats[0] || {
         totalContracts: 0,

@@ -11,7 +11,6 @@ const statsService = require('../services/stats.service');
 
 const router = express.Router();
 
-// Step 1: Upload file to get file URL/ID (without metadata)
 router.post('/upload-file', auth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -20,7 +19,7 @@ router.post('/upload-file', auth, upload.single('file'), async (req, res) => {
 
     // Generate unique file ID
     const fileId = new mongoose.Types.ObjectId();
-    
+
     // Auto-detect file category based on MIME type
     const getFileCategory = (mimeType) => {
       if (mimeType.startsWith('image/')) return 'image';
@@ -31,18 +30,22 @@ router.post('/upload-file', auth, upload.single('file'), async (req, res) => {
       return 'other';
     };
 
+    // Determine file URL and key (handle S3 vs Local)
+    const fileUrl = req.file.location || `${req.protocol}://${req.get('host')}/${req.file.path.replace(/\\/g, '/')}`;
+    const fileKey = req.file.key || req.file.filename;
+
     // Create temporary file record (will be updated when metadata is saved)
     const tempDocument = new Document({
       _id: fileId,
-      filename: req.file.key, // S3 key
+      filename: fileKey,
       originalName: req.file.originalname,
-      filePath: req.file.location, // S3 URL
+      filePath: fileUrl,
       fileSize: req.file.size,
       mimeType: req.file.mimetype,
       uploadedBy: req.user.userId,
-      status: 'temp', // Temporary status until metadata is saved
-      s3Bucket: req.file.bucket,
-      s3Key: req.file.key,
+      status: 'temp',
+      s3Bucket: req.file.bucket || 'local',
+      s3Key: fileKey,
       fileCategory: getFileCategory(req.file.mimetype),
       processingStatus: 'completed'
     });
@@ -52,13 +55,12 @@ router.post('/upload-file', auth, upload.single('file'), async (req, res) => {
     res.status(201).json({
       message: 'File uploaded successfully',
       fileId: fileId.toString(),
-      fileUrl: req.file.location, // S3 URL
+      fileUrl: fileUrl,
       fileName: req.file.originalname
     });
 
   } catch (error) {
     console.error('Error uploading file:', error);
-    
     res.status(500).json({ message: 'Server error while uploading file' });
   }
 });
@@ -99,7 +101,7 @@ router.post('/save', auth, async (req, res) => {
     document.tags = tags || [];
     document.notes = notes || '';
     document.status = 'active'; // Mark as active now that metadata is saved
-    
+
     // Set additional metadata
     document.fileCategory = document.fileCategory || 'document';
     document.processingStatus = 'completed';
@@ -192,7 +194,7 @@ router.post('/upload', auth, upload.single('document'), async (req, res) => {
     if (error.message.includes('Invalid file type')) {
       return res.status(400).json({ message: error.message });
     }
-    
+
     res.status(500).json({ message: 'Server error while uploading document' });
   }
 });
@@ -300,12 +302,12 @@ router.get('/case/:caseId', auth, async (req, res) => {
       return res.status(403).json({ message: 'Access denied to this case' });
     }
 
-    const documents = await Document.find({ 
-      case: caseId, 
-      status: { $ne: 'deleted' } 
+    const documents = await Document.find({
+      case: caseId,
+      status: { $ne: 'deleted' }
     })
-    .populate('uploadedBy', 'firstName lastName')
-    .sort({ createdAt: -1 });
+      .populate('uploadedBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
 
     res.json(documents);
 
@@ -330,15 +332,15 @@ router.get('/preview/:documentId', async (req, res) => {
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({ message: 'Server configuration error' });
     }
-    
+
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
+
       // Check if token is expired
       if (decoded.exp && Date.now() >= decoded.exp * 1000) {
         return res.status(401).json({ message: 'Token expired' });
       }
-      
+
       // Support both { id } and { userId } payloads
       const userId = decoded.userId || decoded.id;
       if (!userId) {
@@ -368,9 +370,9 @@ router.get('/preview/:documentId', async (req, res) => {
           Bucket: document.s3Bucket,
           Key: document.s3Key,
         });
-        
+
         const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hour expiry
-        
+
         // For preview, we'll redirect to the signed URL but with inline disposition
         res.redirect(signedUrl);
         return;
@@ -495,9 +497,9 @@ router.get('/download/:documentId', auth, async (req, res) => {
           Bucket: document.s3Bucket,
           Key: document.s3Key,
         });
-        
+
         const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hour expiry
-        
+
         // Redirect to signed URL
         res.redirect(signedUrl);
         return;
@@ -690,7 +692,7 @@ router.get('/stats/case/:caseId', auth, async (req, res) => {
 router.get('/:documentId', auth, async (req, res) => {
   try {
     const { documentId } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(documentId)) {
       return res.status(400).json({ message: 'Invalid document ID format' });
     }

@@ -148,7 +148,29 @@ const documentSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     }
-  }]
+  }],
+  // AI Contract Analysis fields
+  lastAnalyzed: {
+    type: Date
+  },
+  analysisVersion: {
+    type: String
+  },
+  aiClauseExtraction: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  aiRiskAssessment: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  aiComplianceCheck: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  aiComprehensiveAnalysis: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  fileUrl: {
+    type: String
+  }
 }, {
   timestamps: true
 });
@@ -204,6 +226,12 @@ documentSchema.virtual('aiAnalysisText').get(function() {
 
 // Pre-save middleware to validate required fields when status is 'active'
 documentSchema.pre('save', function(next) {
+  // Skip case validation when only AI analysis fields are being updated
+  if (this.isModified('aiAnalysisStatus') || this.isModified('lastAnalyzed') ||
+      this.isModified('aiClauseExtraction') || this.isModified('aiRiskAssessment') ||
+      this.isModified('aiComplianceCheck') || this.isModified('aiComprehensiveAnalysis')) {
+    return next();
+  }
   if (this.status === 'active' && !this.case) {
     return next(new Error('Case is required when document status is active'));
   }

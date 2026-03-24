@@ -6,6 +6,9 @@ const Person = require('../models/Person');
 const Task = require('../models/Task');
 const Invoice = require('../models/Invoice');
 const Event = require('../models/Event');
+const CaseActivity = require('../models/CaseActivity');
+const ChatMessage = require('../models/ChatMessage');
+const ChatConversation = require('../models/ChatConversation');
 
 // Get dashboard stats
 router.get('/stats', auth, async (req, res) => {
@@ -59,6 +62,48 @@ router.get('/stats', auth, async (req, res) => {
       ? Math.round(((monthlyRevenueNow - monthlyRevenueLast) / monthlyRevenueLast) * 100)
       : 0;
 
+    // Get case distribution by type
+    const caseDistribution = await Case.aggregate([
+      { $group: { _id: "$practiceArea", count: { $sum: 1 } } }
+    ]);
+
+    // Get case activity trends (Last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1); // Start of 6 months ago
+
+    const newCasesTrend = await Case.aggregate([
+      {
+        $match: {
+          dateOpened: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: { $month: "$dateOpened" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const closedCasesTrend = await Case.aggregate([
+      {
+        $match: {
+          caseStage: "Closed",
+          updatedAt: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: { $month: "$updatedAt" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Format trends data (simplified for brevity, realistically would map 1-12 to Jan-Dec)
+    // We will return raw aggregations for now and simpler counts
+
     res.json({
       activeCases: {
         count: activeCasesNow,
@@ -75,9 +120,50 @@ router.get('/stats', auth, async (req, res) => {
       monthlyRevenue: {
         amount: monthlyRevenueNow,
         change: monthlyRevenueChange
-      }
+      },
+      caseDistribution,
+      newCasesTrend,
+      closedCasesTrend
     });
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get dashboard activity
+router.get('/activity', auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // First find all cases for this lawyer
+    const lawyerCases = await Case.find({ lawyer: userId }).select('_id');
+    const caseIds = lawyerCases.map(c => c._id);
+
+    // Find recent activities for these cases
+    const activities = await CaseActivity.find({ case: { $in: caseIds } })
+      .populate('case', 'caseName caseNumber')
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    // Transform to a cleaner format if needed, but the mobile app likely expects the raw activity objects
+    // based on typical patterns. Let's provide a consistent structure.
+    const formattedActivities = activities.map(activity => ({
+      id: activity._id,
+      type: activity.type,
+      title: activity.title,
+      description: activity.description,
+      caseName: activity.case ? activity.case.caseName : 'Unknown Case',
+      caseId: activity.case ? activity.case._id : null,
+      timestamp: activity.createdAt,
+      relativeTime: activity.relativeTime, // using the virtual we saw in the model
+      icon: activity.icon, // using the virtual
+      createdBy: activity.createdBy ? `${activity.createdBy.firstName} ${activity.createdBy.lastName}` : 'System'
+    }));
+
+    res.json(formattedActivities);
+  } catch (error) {
+    console.error('Dashboard activity error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -214,21 +300,20 @@ router.get('/actionable-items', auth, async (req, res) => {
     const now = new Date();
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-    // 1. Deadlines (from Tasks or Cases)
-    // Find tasks due today or overdue
+    // 1. Deadlines (Tasks due today or overdue)
     const deadlines = await Task.find({
       assignedTo: userId,
-      dueDate: { $lte: todayEnd },
-      status: { $ne: 'Completed' }
-    }).populate('case').limit(3);
+      status: { $nin: ['Completed', 'Done', 'Archived'] },
+      dueDate: { $lte: todayEnd }
+    }).populate('case').sort({ dueDate: 1 }).limit(2);
 
     deadlines.forEach(task => {
       actionableItems.push({
         id: `deadline-${task._id}`,
         type: 'deadline',
         title: `Deadline: ${task.title}`,
-        subtitle: task.case ? task.case.caseName : 'General Task',
-        meta: 'Due Today',
+        subtitle: task.case ? task.case.caseName : 'Priority Task',
+        meta: task.dueDate < now ? 'OVERDUE' : 'Due Today',
         isUrgent: true,
         actionLabel: 'View Task',
         secondaryActionLabel: 'Snooze',
@@ -237,46 +322,67 @@ router.get('/actionable-items', auth, async (req, res) => {
       });
     });
 
-    // 2. Mock Messages (since we don't have Message model yet in imports)
-    // In a real app, we would query Message model
-    actionableItems.push({
-      id: 'msg-mock-1',
-      type: 'message',
-      title: 'New Message from Opposing Counsel re: ',
-      subtitle: 'Acme Corp Case',
-      meta: 'Oct 28, 9:42 AM',
-      actionLabel: 'Reply',
-      route: 'Chat', // Assuming Chat screen exists or will exist
-      routeParams: { chatId: 'mock-chat-1' }
+    // 2. Real unread messages
+    const unreadMessages = await ChatMessage.find({
+      sender: { $ne: userId },
+      readBy: { $ne: userId }
+    })
+      .populate('sender', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(2);
+
+    unreadMessages.forEach(msg => {
+      actionableItems.push({
+        id: `msg-${msg._id}`,
+        type: 'message',
+        title: `New Message from ${msg.sender ? msg.sender.firstName : 'Client'}`,
+        subtitle: msg.content.length > 50 ? msg.content.substring(0, 47) + '...' : msg.content,
+        meta: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        actionLabel: 'Reply',
+        route: 'Chat',
+        routeParams: { conversationId: msg.conversation }
+      });
     });
 
-    // 3. Mock Signatures (or derived from tasks with 'sign' in title)
-    // We can look for tasks with 'sign' in title
-    const signatureTasks = await Task.find({
-      assignedTo: userId,
-      title: { $regex: /sign/i },
-      status: { $ne: 'Completed' }
-    }).limit(1);
+    // 3. Overdue Invoices
+    const overdueInvoices = await Invoice.find({
+      user: userId,
+      status: 'Overdue'
+    }).populate('client').limit(1);
 
-    if (signatureTasks.length > 0) {
-      const task = signatureTasks[0];
+    overdueInvoices.forEach(inv => {
       actionableItems.push({
-        id: `sign-${task._id}`,
-        type: 'signature',
-        title: 'Document Signature Requested: ',
-        subtitle: task.title,
-        meta: 'Sent by System',
-        actionLabel: 'Review & Sign',
-        route: 'AddDocument',
-        routeParams: { mode: 'sign' }
+        id: `invoice-${inv._id}`,
+        type: 'deadline',
+        title: `Unpaid Invoice: ${inv.invoiceNumber}`,
+        subtitle: inv.client ? (inv.client.companyName || inv.client.contactPerson) : 'Client Invoice',
+        meta: `₹${inv.total} Outstanding`,
+        isUrgent: true,
+        actionLabel: 'Follow Up',
+        route: 'InvoicesList'
       });
-    } else {
-      // Fallback mock if no sign tasks found, to ensure UI isn't empty during demo
+    });
+
+    // 4. Fallback Mocks if list is too small (for demo purposes)
+    if (actionableItems.length < 2) {
+      if (actionableItems.length === 0) {
+        actionableItems.push({
+          id: 'mock-msg-1',
+          type: 'message',
+          title: 'New Message from Opposing Counsel re: ',
+          subtitle: 'Acme Corp Case Review',
+          meta: '9:42 AM',
+          actionLabel: 'Reply',
+          route: 'Chat',
+          routeParams: { chatId: 'mock-chat-1' }
+        });
+      }
+
       actionableItems.push({
-        id: 'sign-mock-1',
+        id: 'mock-sign-1',
         type: 'signature',
         title: 'Document Signature Requested: ',
-        subtitle: 'Client Engagement Letter',
+        subtitle: 'Client Engagement Letter (v2)',
         meta: 'Sent by Sarah Jenkins',
         actionLabel: 'Review & Sign',
         route: 'AddDocument',
@@ -287,7 +393,7 @@ router.get('/actionable-items', auth, async (req, res) => {
     res.json(actionableItems);
   } catch (error) {
     console.error('Actionable items error:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Failed to fetch actionable items' });
   }
 });
 

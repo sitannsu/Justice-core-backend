@@ -6,6 +6,79 @@ const Case = require('../models/Case');
 const CaseAssignment = require('../models/CaseAssignment');
 const WorkSession = require('../models/WorkSession');
 const UserDepartment = require('../models/UserDepartment');
+const Organization = require('../models/Organization');
+const Department = require('../models/Department');
+const Position = require('../models/Position');
+
+// GET settings
+router.get('/settings', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const tenantId = user.tenant_id || 'default';
+
+    let org = await Organization.findOne({ tenant_id: tenantId });
+    if (!org) {
+      org = await Organization.create({
+        tenant_id: tenantId,
+        name: user.firmName || 'My Organization'
+      });
+    }
+
+    res.json({
+      organizationName: org.name,
+      industryType: org.industry,
+      timeZone: org.timezone,
+      defaultCurrency: org.currency,
+      logoUrl: org.logoUrl ? (org.logoUrl.startsWith('http') ? org.logoUrl : `${req.protocol}://${req.get('host')}/${String(org.logoUrl).replace(/\\/g, '/')}`) : '',
+      address: org.address,
+      contactEmail: org.contactEmail,
+      contactPhone: org.contactPhone
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// PUT settings
+router.put('/settings', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const tenantId = user.tenant_id || 'default';
+
+    const { organizationName, industryType, timeZone, defaultCurrency, logoUrl, address, contactEmail, contactPhone } = req.body;
+
+    let org = await Organization.findOne({ tenant_id: tenantId });
+    if (!org) {
+      org = new Organization({ tenant_id: tenantId });
+    }
+
+    org.name = organizationName;
+    org.industry = industryType;
+    org.timezone = timeZone;
+    org.currency = defaultCurrency;
+    org.logoUrl = logoUrl;
+    org.address = address;
+    org.contactEmail = contactEmail;
+    org.contactPhone = contactPhone;
+
+    await org.save();
+
+    res.json({
+      organizationName: org.name,
+      industryType: org.industry,
+      timeZone: org.timezone,
+      defaultCurrency: org.currency,
+      logoUrl: org.logoUrl ? (org.logoUrl.startsWith('http') ? org.logoUrl : `${req.protocol}://${req.get('host')}/${String(org.logoUrl).replace(/\\/g, '/')}`) : '',
+      address: org.address,
+      contactEmail: org.contactEmail,
+      contactPhone: org.contactPhone
+    });
+  } catch (e) {
+    console.error('Error updating settings:', e);
+    res.status(500).json({ message: 'Update Failed' });
+  }
+});
 
 // Get organization members for Team Chat and org management UIs
 router.get('/members', auth, async (req, res) => {
@@ -271,6 +344,62 @@ router.post('/work-sessions/:id/end', auth, async (req, res) => {
   } catch (error) {
     console.error('Error ending work session:', error);
     res.status(500).json({ message: 'Failed to end work session' });
+  }
+});
+
+// GET /api/organization/departments
+router.get('/departments', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const tenantId = user?.tenant_id || 'default';
+
+    const departments = await Department.find({
+      tenant_id: tenantId,
+      is_active: true
+    }).populate('head_of_department_id', 'firstName lastName email');
+
+    const departmentsWithCounts = await Promise.all(
+      departments.map(async (dept) => {
+        const memberCount = await UserDepartment.countDocuments({
+          department_id: dept._id,
+          is_active: true
+        });
+        return {
+          ...dept.toObject(),
+          id: dept._id,
+          member_count: memberCount,
+          active_cases_count: 0
+        };
+      })
+    );
+
+    res.json(departmentsWithCounts);
+  } catch (error) {
+    console.error('Error fetching departments:', error);
+    res.status(500).json({ message: 'Failed to fetch departments' });
+  }
+});
+
+// GET /api/organization/positions
+router.get('/positions', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const tenantId = user?.tenant_id || 'default';
+
+    const positions = await Position.find({
+      tenant_id: tenantId,
+      is_active: true
+    });
+
+    const mappedPositions = positions.map(pos => ({
+      ...pos.toObject(),
+      id: pos._id
+    }));
+
+    res.json(mappedPositions);
+  } catch (error) {
+    console.error('Error fetching positions:', error);
+    res.status(500).json({ message: 'Failed to fetch positions' });
   }
 });
 

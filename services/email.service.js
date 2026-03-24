@@ -1,5 +1,5 @@
-import nodemailer from 'nodemailer';
-import crypto from 'crypto';
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 class EmailService {
   constructor() {
@@ -44,7 +44,7 @@ class EmailService {
 
   async sendVerificationEmail(email, token, firstName) {
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
-    
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -137,4 +137,6 @@ class EmailService {
   }
 }
 
-export const emailService = new EmailService();
+module.exports = {
+  emailService: new EmailService()
+};

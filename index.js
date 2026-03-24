@@ -15,7 +15,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: ['http://localhost:3006', 'http://192.168.1.122:3006', 'http://192.168.1.122:3006', 'http://localhost:3006'],
+  origin: ['http://localhost:3006', 'http://localhost:8082', 'http://localhost:5173', 'http://192.168.1.122:3006'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -49,8 +49,22 @@ const automationRoutes = require('./routes/automation');
 const documentAutomationRoutes = require('./routes/documentAutomation');
 const chatRoutes = require('./routes/chat');
 const emailRoutes = require('./routes/email');
+const hrManagementRoutes = require('./routes/hr-management');
+const attorneyRoutes = require('./routes/attorney');
+const aiRoutes = require('./routes/ai');
+const tokenUsageRoutes = require('./routes/tokenUsage');
+const judgmentsRoutes = require('./routes/judgments');
+const researchRoutes = require('./routes/research');
+const contractRoutes = require('./routes/contract');
+const caseActivityRoutes = require('./routes/caseActivity');
+const expenseRoutes = require('./routes/expense');
+const folderRoutes = require('./routes/folder');
+const intakeRoutes = require('./routes/intake');
+const noticeRoutes = require('./routes/notice');
+const paymentsRoutes = require('./routes/payments');
 
 const User = require('./models/User');
+require('./models/Attorney');
 
 // Auth Middleware
 const authMiddleware = (req, res, next) => {
@@ -71,7 +85,7 @@ const authMiddleware = (req, res, next) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, firmName, numberOfEmployees, phoneNumber } = req.body;
-    
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already registered' });
@@ -110,7 +124,7 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -163,7 +177,9 @@ app.use((err, req, res, next) => {
 
 // Use routes
 app.use('/api/person', personRoutes);
+app.use('/api/contacts', personRoutes);
 app.use('/api/case', caseRoutes);
+app.use('/api/cases', caseRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/documents', documentRoutes);
@@ -181,6 +197,22 @@ app.use('/api/automation', automationRoutes);
 app.use('/api', documentAutomationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/hr-management', hrManagementRoutes);
+app.use('/api/attorneys', attorneyRoutes);
+app.use('/api', aiRoutes);
+app.use('/api/token-usage', tokenUsageRoutes);
+app.use('/api/judgments', judgmentsRoutes);
+app.use('/api/research', researchRoutes);
+app.use('/api/contracts', contractRoutes);
+app.use('/api/ai-contracts', require('./routes/aiContracts'));
+app.use('/api/case-activity', caseActivityRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/folders', folderRoutes);
+app.use('/api/intake', intakeRoutes);
+app.use('/api/notices', noticeRoutes);
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/ipr', require('./routes/ipr'));
+app.use('/api/signatures', require('./routes/signatures'));
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

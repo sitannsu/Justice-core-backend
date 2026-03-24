@@ -11,6 +11,10 @@ const contractSchema = new mongoose.Schema({
     enum: ['contract', 'agreement', 'terms', 'policy', 'other'],
     default: 'contract'
   },
+  type: {
+    type: String,
+    default: 'Contract'
+  },
   case: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Case',
@@ -28,7 +32,7 @@ const contractSchema = new mongoose.Schema({
   },
   filePath: {
     type: String,
-    required: true
+    required: false
   },
   s3Bucket: {
     type: String,
@@ -40,15 +44,15 @@ const contractSchema = new mongoose.Schema({
   },
   fileSize: {
     type: Number,
-    required: true
+    required: false
   },
   mimeType: {
     type: String,
-    required: true
+    required: false
   },
   originalName: {
     type: String,
-    required: true
+    required: false
   },
   description: {
     type: String,
@@ -56,7 +60,7 @@ const contractSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'active', 'expired', 'terminated', 'archived'],
+    enum: ['draft', 'active', 'expired', 'terminated', 'archived', 'AI Generated'],
     default: 'active'
   },
   // Contract-specific fields
@@ -144,6 +148,14 @@ const contractSchema = new mongoose.Schema({
   extractedText: {
     type: String
   },
+  htmlContent: {
+    type: String,
+    description: 'AI Generated or styled HTML content of the contract'
+  },
+  isAIGenerated: {
+    type: Boolean,
+    default: false
+  },
   // Tags and categorization
   tags: [{
     type: String,
@@ -172,7 +184,7 @@ contractSchema.index({ case: 1 });
 contractSchema.index({ aiAnalysisStatus: 1 });
 
 // Virtual for contract duration
-contractSchema.virtual('duration').get(function() {
+contractSchema.virtual('duration').get(function () {
   if (this.startDate && this.endDate) {
     const diffTime = Math.abs(this.endDate - this.startDate);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -182,7 +194,7 @@ contractSchema.virtual('duration').get(function() {
 });
 
 // Virtual for risk level
-contractSchema.virtual('riskLevel').get(function() {
+contractSchema.virtual('riskLevel').get(function () {
   if (!this.aiRiskFactors?.overallRiskScore) return 'unknown';
   const score = this.aiRiskFactors.overallRiskScore;
   if (score < 30) return 'low';
@@ -191,7 +203,7 @@ contractSchema.virtual('riskLevel').get(function() {
 });
 
 // Pre-save middleware to update processing status
-contractSchema.pre('save', function(next) {
+contractSchema.pre('save', function (next) {
   if (this.aiAnalysisStatus === 'analyzed' && !this.lastAnalyzed) {
     this.lastAnalyzed = new Date();
   }

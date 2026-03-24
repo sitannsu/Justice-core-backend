@@ -1,4 +1,5 @@
 services:
+  # The Backend Service
   justice-core-backend:
     build: 
       context: .
@@ -8,8 +9,15 @@ services:
       - "3006:3006"
     environment:
       - NODE_ENV=production
+      - PORT=3006
+      # To use local MongoDB (container), keep the line below:
+      - MONGODB_URI=mongodb://mongodb:27017/docket-digital
+      # To use remote MongoDB (from .env), comment out the line above.
     env_file:
       - .env
+
+    depends_on:
+      - mongodb
     restart: always
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
@@ -17,3 +25,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # MongoDB Service for local testing
+  mongodb:
+    image: mongo:6.0
+    container_name: justice-core-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+
+volumes:
+  mongo-data:

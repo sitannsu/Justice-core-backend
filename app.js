@@ -45,11 +45,15 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/person', personRoutes);
 app.use('/api/persons', personRoutes);
+app.use('/api/contacts', personRoutes);
 app.use('/api/case', caseRoutes);
+app.use('/api/cases', caseRoutes);
 app.use('/api/client', clientRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -77,15 +81,21 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/invoices', invoiceClientRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api', aiRoutes);
+const expenseRoutes = require('./routes/expense');
+app.use('/api/expenses', expenseRoutes);
+const noticeRoutes = require('./routes/notice');
+app.use('/api/notices', noticeRoutes);
+const iprRoutes = require('./routes/ipr');
+app.use('/api/ipr', iprRoutes);
 app.use('/api/email', emailRoutes);
 
 
 // Basic health check
 app.get('/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  
-  res.status(200).json({ 
-    status: 'OK', 
+
+  res.status(200).json({
+    status: 'OK',
     service: 'Justice Core Backend',
     database: dbStatus,
     timestamp: new Date().toISOString(),
@@ -99,8 +109,8 @@ app.get('/health', (req, res) => {
 app.get('/health/db', async (req, res) => {
   try {
     await mongoose.connection.db.admin().ping();
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
       database: 'connected',
       timestamp: new Date().toISOString(),
       details: {
@@ -110,7 +120,7 @@ app.get('/health/db', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(503).json({ 
+    res.status(503).json({
       database: 'error',
       error: error.message,
       timestamp: new Date().toISOString()
@@ -120,7 +130,7 @@ app.get('/health/db', async (req, res) => {
 
 // Simple test endpoint
 app.get('/api/test', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'Justice Core Backend is running in Docker! 🐳',
     timestamp: new Date().toISOString(),
     success: true
@@ -137,26 +147,26 @@ app.use((err, req, res, next) => {
 //DB CONNECTION WITH RETRY LOGIC
 const connectWithRetry = () => {
   console.log('Attempting to connect to MongoDB...');
-  
+
   mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 10000,
     socketTimeoutMS: 45000,
-    family: 4, 
+    family: 4,
     retryWrites: true,
     maxPoolSize: 10
   })
-  .then(() => {
-    console.log(' Connected to MongoDB successfully!');
-    console.log(`Database: ${mongoose.connection.name}`);
-    console.log(` Connection: ${mongoose.connection.host}:${mongoose.connection.port}`);
-  })
-  .catch(err => {
-    console.error(' MongoDB connection error:', err.message);
-    console.log(' Retrying connection in 5 seconds...');
-    setTimeout(connectWithRetry, 5000);
-  });
+    .then(() => {
+      console.log(' Connected to MongoDB successfully!');
+      console.log(`Database: ${mongoose.connection.name}`);
+      console.log(` Connection: ${mongoose.connection.host}:${mongoose.connection.port}`);
+    })
+    .catch(err => {
+      console.error(' MongoDB connection error:', err.message);
+      console.log(' Retrying connection in 5 seconds...');
+      setTimeout(connectWithRetry, 5000);
+    });
 };
 
 // Start the connection

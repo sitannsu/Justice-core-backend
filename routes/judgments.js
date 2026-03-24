@@ -3,6 +3,9 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const OpenAI = require('openai');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const trackTokenUsage = require('../utils/trackTokenUsage');
+const { upload } = require('../config/multer-s3.config');
+const Document = require('../models/Document');
 
 // Stub endpoint: list courts for judgment search filters
 router.get('/courts', auth, async (req, res) => {
@@ -66,6 +69,7 @@ Only output the JSON as specified.`;
         ],
         temperature: 0.2,
       });
+      await trackTokenUsage(ai, { userId: req.user.userId, endpoint: '/judgments/search', feature: 'judgment_search' });
       const content = ai.choices?.[0]?.message?.content || '{}';
       // Try parse JSON directly; if it includes text around, extract first {...}
       try {
@@ -144,6 +148,7 @@ Return STRICT JSON with:
       temperature: 0.2
     });
 
+    await trackTokenUsage(resp, { userId: req.user.userId, endpoint: '/judgments/:id/summarize', feature: 'judgment_summary' });
     const raw = resp.choices?.[0]?.message?.content || '{}';
     let json;
     try {
@@ -163,6 +168,50 @@ Return STRICT JSON with:
   } catch (e) {
     console.error('Judgment summarize error:', e);
     res.status(500).json({ message: 'Failed to generate summary', error: e.message });
+  }
+});
+
+// Upload judgment with metadata
+router.post('/upload', auth, upload.single('judgment'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const { title, court, caseType, citation, practiceArea, tags } = req.body;
+
+    // Create a Document record for the judgment
+    const judgmentDoc = new Document({
+      filename: req.file.key,
+      originalName: req.file.originalname,
+      filePath: req.file.location,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      uploadedBy: req.user.userId,
+      documentType: 'other', // Will update models later to include 'judgment'
+      description: `Judgment: ${title || 'Untitled'}\nCourt: ${court || 'N/A'}\nPractice Area: ${practiceArea || 'N/A'}\nCitation: ${citation || 'N/A'}`,
+      tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim())) : [],
+      notes: JSON.stringify({
+        court,
+        caseType,
+        citation,
+        practiceArea,
+        isJudgment: true
+      }),
+      s3Bucket: req.file.bucket,
+      s3Key: req.file.key,
+      processingStatus: 'completed'
+    });
+
+    await judgmentDoc.save();
+
+    res.status(201).json({
+      message: 'Judgment uploaded successfully',
+      judgment: judgmentDoc
+    });
+  } catch (e) {
+    console.error('Judgment upload error:', e);
+    res.status(500).json({ message: 'Failed to upload judgment', error: e.message });
   }
 });
 

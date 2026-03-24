@@ -3,6 +3,7 @@ const auth = require('../middleware/auth');
 const Document = require('../models/Document');
 const Case = require('../models/Case');
 const OpenAI = require('openai');
+const trackTokenUsage = require('../utils/trackTokenUsage');
 
 const router = express.Router();
 
@@ -123,6 +124,7 @@ Only output JSON as specified. No extra commentary.`;
         ],
         temperature: 0.2
       });
+      await trackTokenUsage(resp, { userId: req.user.userId, endpoint: '/research/search', feature: 'legal_research' });
       const content = resp.choices?.[0]?.message?.content || '{}';
       let parsed;
       try {
