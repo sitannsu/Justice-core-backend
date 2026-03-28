@@ -43,7 +43,7 @@ const documentSchema = new mongoose.Schema({
   },
   documentType: {
     type: String,
-    enum: ['pleading', 'motion', 'brief', 'evidence', 'correspondence', 'contract', 'other', 'ai_generated', 'engagement_letter', 'nda', 'demand_letter', 'memo', 'custom'],
+    enum: ['pleading', 'motion', 'brief', 'evidence', 'correspondence', 'contract', 'other', 'ai_generated', 'engagement_letter', 'nda', 'demand_letter', 'memo', 'custom', 'client_upload', 'client_document'],
     default: 'other'
   },
   description: {

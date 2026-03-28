@@ -213,12 +213,23 @@ router.get('/recent-activity', auth, async (req, res) => {
 // Client portal: list invoices by logged-in client
 router.get('/client', clientAuth, async (req, res) => {
   try {
-    const list = await Invoice.find({ client: req.user.id })
+    const clientId = req.user.clientId || req.user.id;
+    console.log('[API] Fetching invoices for client:', clientId);
+    
+    // Convert to ObjectId explicitly just in case
+    const queryId = new mongoose.Types.ObjectId(clientId);
+    
+    const list = await Invoice.find({ client: queryId })
       .populate('case', 'caseName caseNumber')
       .populate('client', 'company contactPerson email')
       .sort({ createdAt: -1 });
+      
+    console.log(`[API] Found ${list.length} invoices for client ${clientId}`);
     res.json(list);
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) { 
+    console.error('[API] Error in getClientInvoices:', e);
+    res.status(500).json({ message: e.message }); 
+  }
 });
 
 // Lawyer: Get invoices by client ID

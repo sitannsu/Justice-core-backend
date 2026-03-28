@@ -62,6 +62,7 @@ const folderRoutes = require('./routes/folder');
 const intakeRoutes = require('./routes/intake');
 const noticeRoutes = require('./routes/notice');
 const paymentsRoutes = require('./routes/payments');
+const clientDocumentRoutes = require('./routes/clientDocument');
 
 const User = require('./models/User');
 require('./models/Attorney');
@@ -211,6 +212,7 @@ app.use('/api/folders', folderRoutes);
 app.use('/api/intake', intakeRoutes);
 app.use('/api/notices', noticeRoutes);
 app.use('/api/payments', paymentsRoutes);
+app.use('/api/client/documents', clientDocumentRoutes);
 app.use('/api/ipr', require('./routes/ipr'));
 app.use('/api/signatures', require('./routes/signatures'));
 
