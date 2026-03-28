@@ -88,6 +88,8 @@ app.use('/api/notices', noticeRoutes);
 const iprRoutes = require('./routes/ipr');
 app.use('/api/ipr', iprRoutes);
 app.use('/api/email', emailRoutes);
+const clientDocumentRoutes = require('./routes/clientDocument');
+app.use('/api/client/documents', clientDocumentRoutes);
 
 const tokenUsageRoutes = require('./routes/tokenUsage');
 app.use('/api/token-usage', tokenUsageRoutes);

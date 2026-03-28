@@ -5,12 +5,13 @@ const auth = require('../middleware/auth');
 const Client = require('../models/Client');
 const Case = require('../models/Case');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 // Create a new client
 router.post('/', auth, async (req, res) => {
   try {
     const { company, contactPerson, email, phone, address, accountType, status, notes } = req.body;
-
+    
     // Check if client already exists
     const existingClient = await Client.findOne({ email });
     if (existingClient) {
@@ -24,6 +25,9 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+
     // Create new client with default password
     const client = new Client({
       lawyer: req.user.userId || req.user.id,
@@ -35,29 +39,32 @@ router.post('/', auth, async (req, res) => {
       accountType,
       status: status || 'Active',
       notes,
-      password: 'Password123' // Default password for client login
+      password: 'Password123', // Initial password
+      verificationToken,
+      verificationTokenExpires,
+      isOnboarded: false
     });
 
     await client.save();
 
-    // Send welcome / verification email to the client (non-blocking for main flow)
+    // Send welcome / onboarding email to the client (non-blocking for main flow)
     try {
       const { emailService } = await import('../services/email.service.js');
 
-      const portalUrl = `${process.env.CLIENT_PORTAL_URL || process.env.FRONTEND_URL || 'http://localhost:8083'}/client/login`;
+      const portalUrl = `${process.env.CLIENT_PORTAL_URL || process.env.FRONTEND_URL || 'http://localhost:8083'}/client/onboarding/${verificationToken}`;
 
       const html = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
-          <title>Welcome to Docket</title>
+          <title>Welcome to Docket - Complete Your Profile</title>
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background-color: #2c3e50; color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background-color: #f8f9fa; }
-            .button { display: inline-block; padding: 12px 24px; background-color: #3498db; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .button { display: inline-block; padding: 12px 24px; background-color: #3498db; color: white !important; text-decoration: none; border-radius: 5px; margin: 20px 0; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
             .code { background: #eee; padding: 4px 8px; border-radius: 4px; font-family: monospace; }
           </style>
@@ -69,19 +76,15 @@ router.post('/', auth, async (req, res) => {
             </div>
             <div class="content">
               <h2>Hello ${contactPerson || ''},</h2>
-              <p>You have been added as a client by your lawyer in the Docket platform.</p>
-              <p>You can access your client portal and verify your account by logging in with the details below:</p>
+              <p>You have been added as a client by your lawyer on the Docket platform.</p>
+              <p>To get started, please click the button below to complete your profile and set your login password:</p>
               <p>
-                <strong>Login Email:</strong> <span class="code">${email}</span><br/>
-                <strong>Temporary Password:</strong> <span class="code">Password123</span>
-              </p>
-              <p>Click the button below to open your client portal:</p>
-              <p>
-                <a href="${portalUrl}" class="button">Go to Client Portal</a>
+                <a href="${portalUrl}" class="button">Complete My Profile</a>
               </p>
               <p>If the button does not work, copy and paste this link into your browser:</p>
               <p class="code">${portalUrl}</p>
-              <p>For security, we recommend that you log in and change your password after your first sign-in.</p>
+              <p>This link will expire in 7 days.</p>
+              <p>Once you've completed your profile, you'll be able to view your cases, communicate with your legal team, and manage your documents all in one place.</p>
             </div>
             <div class="footer">
               <p>&copy; ${new Date().getFullYear()} Docket. All rights reserved.</p>
@@ -93,7 +96,7 @@ router.post('/', auth, async (req, res) => {
 
       await emailService.sendEmail({
         to: email,
-        subject: 'You have been added as a client on Docket',
+        subject: 'Action Required: Complete your Docket client profile',
         html
       });
     } catch (emailError) {
@@ -114,10 +117,63 @@ router.post('/', auth, async (req, res) => {
       lastContact: client.createdAt,
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
-      message: 'Client created successfully with default password "Password123". Client can login using their email and this password.'
+      message: 'Client created successfully. An onboarding email has been sent to the client to complete their profile.'
     });
   } catch (error) {
     console.error('Error creating client:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+// Onboarding: Complete profile and set password
+router.post('/onboarding/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password, company, contactPerson, phone, address } = req.body;
+
+    const client = await Client.findOne({
+      verificationToken: token,
+      verificationTokenExpires: { $gt: Date.now() }
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Invalid or expired onboarding token' });
+    }
+
+    // Update client profile and password
+    if (password) client.password = password;
+    if (company) client.company = company;
+    if (contactPerson) client.contactPerson = contactPerson;
+    if (phone) client.phone = phone;
+    if (address) client.address = address;
+
+    client.isOnboarded = true;
+    client.verificationToken = undefined;
+    client.verificationTokenExpires = undefined;
+
+    await client.save();
+
+    res.json({ message: 'Profile completed successfully. You can now login.' });
+  } catch (error) {
+    console.error('Error during client onboarding:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Verification check for onboarding link
+router.get('/onboarding/verify/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const client = await Client.findOne({
+      verificationToken: token,
+      verificationTokenExpires: { $gt: Date.now() }
+    }).select('email contactPerson company phone address');
+
+    if (!client) {
+      return res.status(404).json({ message: 'Invalid or expired onboarding token' });
+    }
+
+    res.json(client);
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
@@ -239,31 +295,42 @@ router.get('/cases/:caseId', clientAuth, async (req, res) => {
       return res.status(400).json({ message: 'caseId is required' });
     }
 
-    console.log('--- [GET /api/client/cases/:caseId] ---');
-    console.log('Client token user:', req.user);
-
     const caseDoc = await Case.findOne({
       _id: caseId,
       clients: new mongoose.Types.ObjectId(clientId)
     })
       .populate('lawyer', 'firstName lastName email phoneNumber')
-      .populate('clients', 'company contactPerson email phone');
+      .populate('clients', 'company contactPerson email phone')
+      .populate('assignedAttorney', 'firstName lastName email specialization');
 
     if (!caseDoc) {
       return res.status(404).json({ message: 'Case not found for this client' });
     }
 
-    // Find this client within the case's clients list
-    const clientInCase = (caseDoc.clients || []).find(c => c._id.toString() === clientId);
+    // Fetch activities for this case
+    const CaseActivity = require('../models/CaseActivity');
+    const activities = await CaseActivity.find({ 
+      case: caseId,
+      isPublic: true 
+    }).sort({ createdAt: -1 });
+
+    // Fetch documents for this case
+    const Document = require('../models/Document');
+    const documents = await Document.find({
+      case: caseId,
+      status: { $ne: 'deleted' }
+    }).sort({ createdAt: -1 });
 
     const formattedCase = {
       id: caseDoc._id,
       caseName: caseDoc.caseName,
       caseNumber: caseDoc.caseNumber,
       status: caseDoc.status || 'Active',
-      priority: 'Medium',
+      priority: caseDoc.priority || 'Medium',
       caseType: caseDoc.practiceArea || 'General',
       description: caseDoc.description || '',
+      progress: caseDoc.progress || 0,
+      dateOpened: caseDoc.dateOpened,
       assignedLawyer: caseDoc.lawyer
         ? {
           name: `${caseDoc.lawyer.firstName || ''} ${caseDoc.lawyer.lastName || ''}`.trim() || 'Your Lawyer',
@@ -271,26 +338,68 @@ router.get('/cases/:caseId', clientAuth, async (req, res) => {
           phone: caseDoc.lawyer.phoneNumber || ''
         }
         : null,
-      client: clientInCase
-        ? {
-          name: clientInCase.contactPerson || clientInCase.company || '',
-          email: clientInCase.email || '',
-          phone: clientInCase.phone || ''
-        }
-        : null,
+      assignedAttorney: caseDoc.assignedAttorney ? {
+        name: `${caseDoc.assignedAttorney.firstName || ''} ${caseDoc.assignedAttorney.lastName || ''}`.trim(),
+        specialization: caseDoc.assignedAttorney.specialization
+      } : null,
       createdAt: caseDoc.createdAt,
       updatedAt: caseDoc.updatedAt,
-      estimatedCompletion: caseDoc.statuteOfLimitations || null,
-      fees: caseDoc.caseValue || 0,
-      progress: 0,
-      activities: [],
-      documents: []
+      activities: activities,
+      documents: documents
     };
 
     return res.json({ case: formattedCase });
   } catch (error) {
     console.error('Error fetching client case details:', error);
     return res.status(500).json({ message: error.message });
+  }
+});
+
+// Get client dashboard summary
+router.get('/dashboard', clientAuth, async (req, res) => {
+  try {
+    const clientId = req.user.id;
+
+    // 1. Get stats
+    const cases = await Case.find({ clients: clientId });
+    const activeCases = cases.filter(c => c.status !== 'Closed').length;
+    
+    // 2. Get recent activities for all cases belonging to this client
+    const CaseActivity = require('../models/CaseActivity');
+    const recentActivities = await CaseActivity.find({
+      case: { $in: cases.map(c => c._id) },
+      isPublic: true
+    })
+      .populate('case', 'caseName')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    // 3. Get document count
+    const Document = require('../models/Document');
+    const docCount = await Document.countDocuments({
+      case: { $in: cases.map(c => c._id) },
+      status: { $ne: 'deleted' }
+    });
+
+    res.json({
+      stats: {
+        totalCases: cases.length,
+        activeCases: activeCases,
+        documents: docCount,
+        unreadMessages: 0 // Stub for now
+      },
+      recentActivities: recentActivities.map(a => ({
+        id: a._id,
+        title: a.title,
+        description: a.description,
+        type: a.type,
+        createdAt: a.createdAt,
+        caseName: a.case ? a.case.caseName : 'Generic'
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching client dashboard:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 

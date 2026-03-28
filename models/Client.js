@@ -53,7 +53,17 @@ const clientSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    default: 'Password123' // Default password for new clients
+    default: 'Password123' // Default password, can be changed during onboarding
+  },
+  verificationToken: {
+    type: String
+  },
+  verificationTokenExpires: {
+    type: Date
+  },
+  isOnboarded: {
+    type: Boolean,
+    default: false
   }
 });
 

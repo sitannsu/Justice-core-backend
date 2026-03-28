@@ -101,6 +101,14 @@ router.post('/login', async (req, res) => {
       if (!isMatch) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
+      
+      // Check if client has completed onboarding
+      if (user.isOnboarded === false) {
+        return res.status(403).json({ 
+          message: 'Please complete your account setup via the onboarding email sent to you.',
+          requiresOnboarding: true 
+        });
+      }
     }
 
     // Standardize payload: always id, email, role
@@ -165,9 +173,17 @@ router.post('/client-login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    // Check if client has completed onboarding
+    if (client.isOnboarded === false) {
+      return res.status(403).json({ 
+        message: 'Please complete your account setup via the onboarding email sent to you.',
+        requiresOnboarding: true 
+      });
+    }
+
     // Generate token for client
     const token = jwt.sign(
-      { clientId: client._id, email: client.email, role: 'client' },
+      { id: client._id, clientId: client._id, email: client.email, role: 'client' },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );

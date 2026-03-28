@@ -58,10 +58,17 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // Check password
     const isValidPassword = await client.comparePassword(password);
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Check if client has completed onboarding
+    if (client.isOnboarded === false) {
+      return res.status(403).json({ 
+        message: 'Please complete your account setup via the onboarding email sent to you.',
+        requiresOnboarding: true 
+      });
     }
 
     // Generate JWT token (unified structure)

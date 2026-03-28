@@ -63,10 +63,21 @@ const caseSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },
+  progress: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: 0
+  },
   status: {
     type: String,
-    enum: ['active', 'closed', 'pending', 'Active', 'Closed', 'Pending'],
-    default: 'active'
+    enum: [
+      'Active', 'active', 'Closed', 'closed', 'Pending', 'pending', 
+      'Intake', 'intake', 'Consultation', 'consultation', 
+      'Filed', 'filed', 'Filing', 'filing', 
+      'Hearing', 'hearing', 'Resolution', 'resolution'
+    ],
+    default: 'Active'
   }
 }, {
   timestamps: true
