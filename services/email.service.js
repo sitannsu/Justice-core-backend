@@ -43,7 +43,7 @@ class EmailService {
   }
 
   async sendVerificationEmail(email, token, firstName) {
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3006';
+    const backendUrl = process.env.BACKEND_URL || 'https://api.docket.digital';
     const verificationUrl = `${backendUrl}/api/auth/verify/${token}`;
 
     const html = `
@@ -64,11 +64,11 @@ class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>Justice Core Suite</h1>
+            <h1>Docket Digital</h1>
           </div>
           <div class="content">
             <h2>Hello ${firstName}!</h2>
-            <p>Thank you for registering with Justice Core Suite. To complete your registration, please verify your email address by clicking the button below:</p>
+            <p>Thank you for registering with Docket Digital. To complete your registration, please verify your email address by clicking the button below:</p>
             <a href="${verificationUrl}" class="button">Verify Email Address</a>
             <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
             <p>${verificationUrl}</p>
@@ -76,7 +76,7 @@ class EmailService {
             <p>If you didn't create an account with us, please ignore this email.</p>
           </div>
           <div class="footer">
-            <p>&copy; 2024 Justice Core Suite. All rights reserved.</p>
+            <p>&copy; 2024 Docket Digital. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -85,7 +85,7 @@ class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Verify Your Email - Justice Core Suite',
+      subject: 'Verify Your Email - Docket Digital',
       html
     });
   }
@@ -113,7 +113,7 @@ class EmailService {
           </div>
           <div class="content">
             <h2>Hello ${firstName}!</h2>
-            <p>We detected a new login to your Justice Core Suite account.</p>
+            <p>We detected a new login to your Docket Digital account.</p>
             <div class="alert">
               <strong>Login Details:</strong><br>
               Time: ${loginTime.toLocaleString()}<br>
@@ -123,7 +123,7 @@ class EmailService {
             <p>If you didn't log in to your account, please contact our support team immediately.</p>
           </div>
           <div class="footer">
-            <p>&copy; 2024 Justice Core Suite. All rights reserved.</p>
+            <p>&copy; 2024 Docket Digital. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -132,7 +132,7 @@ class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'New Login Detected - Justice Core Suite',
+      subject: 'New Login Detected - Docket Digital',
       html
     });
   }
