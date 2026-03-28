@@ -77,6 +77,11 @@ const taskSchema = new mongoose.Schema({
       time: { type: Date, default: Date.now }
     }
   ],
+  lawyer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -6,9 +6,23 @@ const auth = require('../middleware/auth');
 // Get all tasks
 router.get('/', auth, async (req, res) => {
   try {
-    const tasks = await Task.find()
+    const userId = req.user.userId || req.user.id;
+    const { caseId } = req.query;
+    
+    const query = { lawyer: userId };
+    
+    if (caseId && caseId !== 'undefined') {
+      query.case = caseId;
+    }
+    
+    console.log(`[TASKS] Fetching tasks for lawyer: ${userId}, query:`, query);
+    
+    const tasks = await Task.find(query)
       .populate('case', 'number title')
-      .populate('assignedTo', 'firstName lastName');
+      .populate('assignedTo', 'firstName lastName')
+      .sort({ createdAt: -1 });
+    
+    console.log(`[TASKS] Found ${tasks.length} tasks`);
     res.json(tasks);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -22,11 +36,12 @@ router.post('/', auth, async (req, res) => {
     description: req.body.description,
     status: req.body.status,
     priority: req.body.priority,
-    progress: req.body.progress,
+    progress: req.body.progress || 0,
     dueDate: req.body.dueDate,
     case: req.body.caseId,
     assignedTo: req.body.assignedTo || undefined,
-    reminders: req.body.reminders || []
+    reminders: req.body.reminders || [],
+    lawyer: req.user.userId || req.user.id
   });
 
   try {
@@ -43,13 +58,18 @@ router.post('/', auth, async (req, res) => {
 // Get a specific task
 router.get('/:id', auth, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id)
+    const userId = req.user.userId || req.user.id;
+    const task = await Task.findOne({
+      _id: req.params.id,
+      lawyer: userId
+    })
       .populate('case', 'number title')
       .populate('assignedTo', 'firstName lastName');
+    
     if (task) {
       res.json(task);
     } else {
-      res.status(404).json({ message: 'Task not found' });
+      res.status(404).json({ message: 'Task not found or unauthorized' });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -59,9 +79,14 @@ router.get('/:id', auth, async (req, res) => {
 // Update a task
 router.put('/:id', auth, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id);
+    const userId = req.user.userId || req.user.id;
+    const task = await Task.findOne({
+      _id: req.params.id,
+      lawyer: userId
+    });
+    
     if (!task) {
-      return res.status(404).json({ message: 'Task not found' });
+      return res.status(404).json({ message: 'Task not found or unauthorized' });
     }
 
     if (req.body.caseId) {
@@ -82,9 +107,14 @@ router.put('/:id', auth, async (req, res) => {
 // Update task progress
 router.patch('/:id/progress', auth, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id);
+    const userId = req.user.userId || req.user.id;
+    const task = await Task.findOne({
+      _id: req.params.id,
+      lawyer: userId
+    });
+    
     if (!task) {
-      return res.status(404).json({ message: 'Task not found' });
+      return res.status(404).json({ message: 'Task not found or unauthorized' });
     }
 
     task.progress = req.body.progress;
@@ -101,11 +131,15 @@ router.patch('/:id/progress', auth, async (req, res) => {
 // Delete a task
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id);
+    const userId = req.user.userId || req.user.id;
+    const task = await Task.findOneAndDelete({
+      _id: req.params.id,
+      lawyer: userId
+    });
+    
     if (!task) {
-      return res.status(404).json({ message: 'Task not found' });
+      return res.status(404).json({ message: 'Task not found or unauthorized' });
     }
-    await task.remove();
     res.json({ message: 'Task deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -115,9 +149,14 @@ router.delete('/:id', auth, async (req, res) => {
 // Add a comment to a task
 router.post('/:id/comments', auth, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id);
+    const userId = req.user.userId || req.user.id;
+    const task = await Task.findOne({
+      _id: req.params.id,
+      lawyer: userId
+    });
+    
     if (!task) {
-      return res.status(404).json({ message: 'Task not found' });
+      return res.status(404).json({ message: 'Task not found or unauthorized' });
     }
 
     const newComment = {

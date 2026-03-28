@@ -11,8 +11,8 @@ class EmailService {
       this.transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-          user: 'docket.digital2025@gmail.com',
-          pass: 'wtme miaf qnwm ghed'
+          user: process.env.EMAIL_USER_GMAIL || 'docket.digital2025@gmail.com',
+          pass: process.env.EMAIL_PASS_GMAIL || 'wtme miaf qnwm ghed'
         }
       });
     }
@@ -23,7 +23,7 @@ class EmailService {
     try {
       const transporter = this.getTransporter();
       const mailOptions = {
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        from: process.env.EMAIL_FROM_GMAIL || 'docket.digital2025@gmail.com',
         to: options.to,
         subject: options.subject,
         html: options.html
@@ -43,7 +43,8 @@ class EmailService {
   }
 
   async sendVerificationEmail(email, token, firstName) {
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3006';
+    const verificationUrl = `${backendUrl}/api/auth/verify/${token}`;
 
     const html = `
       <!DOCTYPE html>

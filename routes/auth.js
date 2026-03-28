@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Client = require('../models/Client');
 const auth = require('../middleware/auth');
+const { emailService } = require('../services/email.service');
+const crypto = require('crypto');
 
 // Register new user
 router.post('/register', async (req, res) => {
@@ -30,7 +32,11 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create new user (password will be hashed automatically by the User model)
+    // Generate confirmation token for lawyers
+    const confirmationToken = role === 'lawyer' ? crypto.randomBytes(32).toString('hex') : undefined;
+    const confirmationTokenExpires = role === 'lawyer' ? Date.now() + 24 * 60 * 60 * 1000 : undefined; // 24 hours
+
+    // Create new user
     const user = new User({
       email,
       password,
@@ -40,22 +46,42 @@ router.post('/register', async (req, res) => {
       firmName,
       numberOfEmployees,
       phoneNumber,
+      isConfirmed: role !== 'lawyer', // Only lawyers need confirmation
+      confirmationToken,
+      confirmationTokenExpires,
       zipCode: req.body.zipCode || ''
     });
 
     // Save user
     await user.save();
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
+    // Send verification email for lawyers
+    if (role === 'lawyer') {
+      try {
+        await emailService.sendVerificationEmail(user.email, confirmationToken, user.firstName);
+        console.log(`Verification email sent to ${user.email}`);
+      } catch (err) {
+        console.error('Failed to send verification email:', err);
+      }
+    }
 
-    // Return user info and token
+    // For non-lawyer roles, generate JWT token for auto-login
+    let token = undefined;
+    if (user.role !== 'lawyer') {
+      token = jwt.sign(
+        { userId: user._id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '24h' }
+      );
+    }
+
+    // Return response
     res.status(201).json({
+      message: user.role === 'lawyer' 
+        ? 'Registration successful! Please check your email to confirm your account.' 
+        : 'Registration successful!',
       token,
+      requiresConfirmation: user.role === 'lawyer',
       user: {
         id: user._id,
         email: user.email,
@@ -89,6 +115,14 @@ router.post('/login', async (req, res) => {
       const isMatch = await user.comparePassword(password);
       if (!isMatch) {
         return res.status(401).json({ message: 'Invalid credentials' });
+      }
+
+      // Check if email is confirmed for lawyers (skip if admin or other roles)
+      if (user.role === 'lawyer' && user.isConfirmed === false) {
+        return res.status(403).json({ 
+          message: 'Please confirm your email address before logging in.', 
+          requiresConfirmation: true 
+        });
       }
     } else {
       // Try Client model
@@ -317,6 +351,33 @@ router.put('/password', auth, async (req, res) => {
   } catch (error) {
     console.error('Password update error:', error);
     res.status(500).json({ message: 'Server error during password update' });
+  }
+});
+
+// Verify email address
+router.get('/verify/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const user = await User.findOne({ 
+      confirmationToken: token, 
+      confirmationTokenExpires: { $gt: Date.now() } 
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Confirmation token is invalid or has expired.' });
+    }
+
+    user.isConfirmed = true;
+    user.confirmationToken = undefined;
+    user.confirmationTokenExpires = undefined;
+    await user.save();
+
+    // Redirect to frontend with success message
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+    res.redirect(`${frontendUrl}/auth?verified=true`);
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({ message: 'Server error during email verification' });
   }
 });
 

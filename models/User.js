@@ -55,6 +55,12 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   lastLogin: Date,
+  isConfirmed: {
+    type: Boolean,
+    default: false
+  },
+  confirmationToken: String,
+  confirmationTokenExpires: Date,
   tenant_id: {
     type: String,
     default: 'default'
