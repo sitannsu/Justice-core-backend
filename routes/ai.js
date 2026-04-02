@@ -771,4 +771,87 @@ Format the document professionally and ensure it's ready for review and use.`;
   }
 });
 
+// POST /ai/text-to-form — Extract structured form fields from transcript text
+router.post('/ai/text-to-form', auth, async (req, res) => {
+  console.log('--- /api/ai/text-to-form called ---');
+  try {
+    const { transcript, formType = 'case' } = req.body;
+    if (!transcript || !transcript.trim()) {
+      return res.status(400).json({ error: 'No transcript text provided' });
+    }
+    console.log('Form type:', formType, '| Transcript:', transcript);
+
+    let systemPrompt;
+    if (formType === 'case') {
+      systemPrompt = `You are a legal form assistant. Extract structured case information from the user's spoken input.
+Return ONLY a valid JSON object with these fields (use null for any field not mentioned):
+{
+  "caseName": "string - the name/title of the case",
+  "caseNumber": "string - case number if mentioned, otherwise generate one like CASE-2026-XXX",
+  "practiceArea": "string - must be one of: Corporate Law, Family Law, Criminal Law, Civil Litigation, Real Estate, Intellectual Property, Employment Law, Tax Law, Bankruptcy, Immigration, Environmental Law, Healthcare Law, Entertainment Law, Sports Law, Other",
+  "caseStage": "string - must be one of: active, pending, closed, on hold",
+  "description": "string - detailed case description from what was said",
+  "office": "string - office location if mentioned",
+  "conflictCheck": false
+}
+Be smart about inferring the practice area from context. Generate a reasonable case number if none given.`;
+    } else if (formType === 'client') {
+      systemPrompt = `You are a legal form assistant. Extract structured client information from the user's spoken input.
+Return ONLY a valid JSON object with these fields (use null for any field not mentioned):
+{
+  "contactPerson": "string - full name of the contact person",
+  "company": "string - company/organization name if mentioned",
+  "email": "string - email address if mentioned",
+  "phone": "string - phone number if mentioned",
+  "address": "string - address if mentioned",
+  "city": "string - city if mentioned",
+  "state": "string - state if mentioned",
+  "zipCode": "string - zip/postal code if mentioned",
+  "notes": "string - any additional notes or context mentioned"
+}
+Be smart about inferring details from context.`;
+    } else if (formType === 'task') {
+      systemPrompt = `You are a task form assistant. Extract structured task information from the user's spoken input.
+Return ONLY a valid JSON object with these fields (use null for any field not mentioned):
+{
+  "title": "string - short task title",
+  "description": "string - task details",
+  "status": "string - must be one of: Not Started, In Progress, Pending, Completed, Overdue",
+  "priority": "string - must be one of: Low, Medium, High",
+  "dueDate": "string - date in YYYY-MM-DD if mentioned (convert from natural language like 'tomorrow' if possible)",
+  "progress": "number - 0 to 100",
+  "assignedTo": "string - assignee name if mentioned"
+}
+If the user doesn't specify status/priority, keep them null (do not guess). For progress, infer only if explicitly mentioned.`;
+    } else {
+      systemPrompt = `You are a form assistant. Extract all key-value pairs from the user's spoken input.
+Return ONLY a valid JSON object with the extracted fields.`;
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: transcript }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    });
+
+    await trackTokenUsage(completion, {
+      userId: req.user.userId,
+      endpoint: '/ai/text-to-form',
+      feature: 'voice_form_fill',
+    });
+
+    const extracted = JSON.parse(completion.choices[0].message.content);
+    console.log('Extracted fields:', extracted);
+
+    res.json({ fields: extracted, formType });
+  } catch (error) {
+    console.error('Text-to-form error:', error);
+    res.status(500).json({ error: 'Failed to extract form fields', details: error.message });
+  }
+});
+
 module.exports = router;

@@ -47,6 +47,7 @@ const tokenUsageSchema = new mongoose.Schema({
       'judgment_summary',
       'legal_research',
       'document_automation',
+      'voice_form_fill',
       'other'
     ],
     default: 'other'
